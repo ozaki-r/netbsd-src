@@ -417,6 +417,7 @@ show_interfaces(int sock, const char *bridge, const char *prefix)
 		"learning",
 		"forwarding",
 		"blocking",
+		"discarding",
 	};
 	struct ifbifconf bifc;
 	struct ifbreq *req;
