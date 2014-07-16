@@ -1431,6 +1431,10 @@ if_down(struct ifnet *ifp)
 	if (ifp->if_carp)
 		carp_carpdev_state(ifp);
 #endif
+#if NBRIDGE > 0
+	if (ifp->if_bridge)
+		bstp_ifstate(ifp);
+#endif
 	rt_ifmsg(ifp);
 #ifdef INET6
 	if (in6_present)
@@ -1460,6 +1464,10 @@ if_up(struct ifnet *ifp)
 #if NCARP > 0
 	if (ifp->if_carp)
 		carp_carpdev_state(ifp);
+#endif
+#if NBRIDGE > 0
+	if (ifp->if_bridge)
+		bstp_ifstate(ifp);
 #endif
 	rt_ifmsg(ifp);
 #ifdef INET6
