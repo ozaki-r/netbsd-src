@@ -146,6 +146,7 @@ __KERNEL_RCSID(0, "$NetBSD: bridgestp.c,v 1.17 2014/07/14 02:34:36 ozaki-r Exp $
 #define	BSTP_TICK_VAL		(1 * 256)	/* in 256ths of a second */
 #define	BSTP_LINK_TIMER		(BSTP_TICK_VAL * 15)
 
+#define	BRIDGESTP_DEBUG 1
 #ifdef	BRIDGESTP_DEBUG
 #define	DPRINTF(fmt, arg...)	printf("bstp: " fmt, ##arg)
 #else
