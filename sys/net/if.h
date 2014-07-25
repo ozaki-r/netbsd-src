@@ -80,6 +80,7 @@
 #include <sys/socket.h>
 #include <sys/queue.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 
 #include <net/dlt.h>
 #include <net/pfil.h>
@@ -984,6 +985,10 @@ __END_DECLS
 #define	IFNET_EMPTY()			TAILQ_EMPTY(&ifnet_list)
 #define	IFNET_NEXT(__ifp)		TAILQ_NEXT((__ifp), if_list)
 #define	IFNET_FOREACH(__ifp)		TAILQ_FOREACH(__ifp, &ifnet_list, if_list)
+#define	IFNET_RLOCK()			rw_enter(&ifnet_lock, RW_READER)
+#define	IFNET_WLOCK()			rw_enter(&ifnet_lock, RW_WRITER)
+#define	IFNET_UNLOCK()			rw_exit(&ifnet_lock)
+
 #define	IFADDR_FIRST(__ifp)		TAILQ_FIRST(&(__ifp)->if_addrlist)
 #define	IFADDR_NEXT(__ifa)		TAILQ_NEXT((__ifa), ifa_list)
 #define	IFADDR_FOREACH(__ifa, __ifp)	TAILQ_FOREACH(__ifa, \
@@ -991,9 +996,11 @@ __END_DECLS
 #define	IFADDR_EMPTY(__ifp)		TAILQ_EMPTY(&(__ifp)->if_addrlist)
 
 extern struct ifnet_head ifnet_list;
+extern krwlock_t ifnet_lock;
 extern struct ifnet *lo0ifp;
 
 ifnet_t *	if_byindex(u_int);
+void		if_drain_all(void);
 
 /*
  * ifq sysctl support
