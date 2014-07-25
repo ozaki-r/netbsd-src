@@ -356,6 +356,7 @@ tbr_timeout(void *arg)
 
 	active = 0;
 	s = splnet();
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (!TBR_IS_ENABLED(&ifp->if_snd))
 			continue;
@@ -363,6 +364,7 @@ tbr_timeout(void *arg)
 		if (!IFQ_IS_EMPTY(&ifp->if_snd) && ifp->if_start != NULL)
 			(*ifp->if_start)(ifp);
 	}
+	IFNET_UNLOCK();
 	splx(s);
 	if (active > 0)
 		CALLOUT_RESET(&tbr_callout, 1, tbr_timeout, (void *)0);

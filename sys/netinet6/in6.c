@@ -2275,6 +2275,7 @@ in6_setmaxmtu(void)
 	unsigned long maxmtu = 0;
 	struct ifnet *ifp;
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		/* this function can be called during ifnet initialization */
 		if (!ifp->if_afdata[AF_INET6])
@@ -2283,6 +2284,7 @@ in6_setmaxmtu(void)
 		    IN6_LINKMTU(ifp) > maxmtu)
 			maxmtu = IN6_LINKMTU(ifp);
 	}
+	IFNET_UNLOCK();
 	if (maxmtu)	     /* update only when maxmtu is positive */
 		in6_maxmtu = maxmtu;
 }
