@@ -543,7 +543,6 @@ m_reclaim(void *arg, int flags)
 {
 	struct domain *dp;
 	const struct protosw *pr;
-	struct ifnet *ifp;
 	int s;
 
 	KERNEL_LOCK(1, NULL);
@@ -554,10 +553,7 @@ m_reclaim(void *arg, int flags)
 			if (pr->pr_drain)
 				(*pr->pr_drain)();
 	}
-	IFNET_FOREACH(ifp) {
-		if (ifp->if_drain)
-			(*ifp->if_drain)(ifp);
-	}
+	if_drain_all();
 	splx(s);
 	mbstat.m_drain++;
 	KERNEL_UNLOCK_ONE(NULL);

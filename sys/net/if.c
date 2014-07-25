@@ -113,6 +113,7 @@ __KERNEL_RCSID(0, "$NetBSD: if.c,v 1.287 2014/07/29 05:56:58 ozaki-r Exp $");
 #include <sys/kauth.h>
 #include <sys/kmem.h>
 #include <sys/xcall.h>
+#include <sys/cpu.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -158,9 +159,14 @@ static ifnet_t **		ifindex2ifnet = NULL;
 static u_int			if_index = 1;
 static size_t			if_indexlim = 0;
 static uint64_t			index_gen;
-static kmutex_t			index_gen_mtx;
 
 static struct ifaddr **		ifnet_addrs = NULL;
+
+/*
+ * Mutex to protect the above objects.
+ */
+krwlock_t			ifnet_lock __cacheline_aligned;
+static kmutex_t			ifnet_intr_lock __cacheline_aligned;
 
 static callout_t		if_slowtimo_ch;
 
@@ -246,7 +252,8 @@ ifinit(void)
 void
 ifinit1(void)
 {
-	mutex_init(&index_gen_mtx, MUTEX_DEFAULT, IPL_NONE);
+	rw_init(&ifnet_lock);
+	mutex_init(&ifnet_intr_lock, MUTEX_DEFAULT, IPL_NET);
 	TAILQ_INIT(&ifnet_list);
 	if_indexlim = 8;
 
@@ -394,7 +401,10 @@ static void
 if_sadl_setrefs(struct ifnet *ifp, struct ifaddr *ifa)
 {
 	const struct sockaddr_dl *sdl;
+	IFNET_WLOCK();
 	ifnet_addrs[ifp->if_index] = ifa;
+	IFNET_UNLOCK();
+
 	IFAREF(ifa);
 	ifp->if_dl = ifa;
 	IFAREF(ifa);
@@ -439,7 +449,10 @@ if_deactivate_sadl(struct ifnet *ifp)
 
 	ifp->if_sadl = NULL;
 
+	IFNET_WLOCK();
 	ifnet_addrs[ifp->if_index] = NULL;
+	IFNET_UNLOCK();
+
 	IFAFREE(ifa);
 	ifp->if_dl = NULL;
 	IFAFREE(ifa);
@@ -472,12 +485,17 @@ if_free_sadl(struct ifnet *ifp)
 	struct ifaddr *ifa;
 	int s;
 
+	KASSERT(!cpu_intr_p());
+
+	IFNET_WLOCK();
 	ifa = ifnet_addrs[ifp->if_index];
 	if (ifa == NULL) {
 		KASSERT(ifp->if_sadl == NULL);
 		KASSERT(ifp->if_dl == NULL);
+		IFNET_UNLOCK();
 		return;
 	}
+	IFNET_UNLOCK();
 
 	KASSERT(ifp->if_sadl != NULL);
 	KASSERT(ifp->if_dl != NULL);
@@ -498,9 +516,9 @@ if_getindex(ifnet_t *ifp)
 {
 	bool hitlimit = false;
 
-	mutex_enter(&index_gen_mtx);
+	KASSERT(rw_lock_held(&ifnet_lock));
+
 	ifp->if_index_gen = index_gen++;
-	mutex_exit(&index_gen_mtx);
 
 	ifp->if_index = if_index;
 	if (ifindex2ifnet == NULL) {
@@ -579,13 +597,21 @@ void
 if_attach(ifnet_t *ifp)
 {
 	KASSERT(if_indexlim > 0);
+
 	TAILQ_INIT(&ifp->if_addrlist);
+
+	IFNET_WLOCK();
+
+	mutex_enter(&ifnet_intr_lock);
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
+	mutex_exit(&ifnet_intr_lock);
 
 	if (ifioctl_attach(ifp) != 0)
 		panic("%s: ifioctl_attach() failed", __func__);
 
 	if_getindex(ifp);
+
+	IFNET_UNLOCK();
 
 	/*
 	 * Link level name is allocated later by a separate call to
@@ -637,6 +663,11 @@ if_attachdomain(void)
 	int s;
 
 	s = splnet();
+	/*
+	 * Don't IFNET_RLOCK, because it may be called inside if_attachdomain1.
+	 * Anyway we don't need IFNET_RLOCK because this function is called
+	 * only during bootstrap.
+	 */
 	IFNET_FOREACH(ifp)
 		if_attachdomain1(ifp);
 	splx(s);
@@ -858,9 +889,15 @@ again:
 	/* Announce that the interface is gone. */
 	rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
 
+	IFNET_WLOCK();
+
 	ifindex2ifnet[ifp->if_index] = NULL;
 
+	mutex_enter(&ifnet_intr_lock);
 	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
+	mutex_exit(&ifnet_intr_lock);
+
+	IFNET_UNLOCK();
 
 	ifioctl_detach(ifp);
 
@@ -1127,8 +1164,9 @@ struct ifaddr *
 ifa_ifwithaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
-	struct ifaddr *ifa;
+	struct ifaddr *ifa = NULL;
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1136,16 +1174,20 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 			if (ifa->ifa_addr->sa_family != addr->sa_family)
 				continue;
 			if (equal(addr, ifa->ifa_addr))
-				return ifa;
+				goto found;
 			if ((ifp->if_flags & IFF_BROADCAST) &&
 			    ifa->ifa_broadaddr &&
 			    /* IP6 doesn't have broadcast */
 			    ifa->ifa_broadaddr->sa_len != 0 &&
 			    equal(ifa->ifa_broadaddr, addr))
-				return ifa;
+				goto found;
 		}
 	}
-	return NULL;
+	ifa = NULL;
+found:
+	IFNET_UNLOCK();
+
+	return ifa;
 }
 
 /*
@@ -1158,6 +1200,7 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1167,10 +1210,13 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 			if (ifa->ifa_addr->sa_family != addr->sa_family ||
 			    ifa->ifa_dstaddr == NULL)
 				continue;
-			if (equal(addr, ifa->ifa_dstaddr))
+			if (equal(addr, ifa->ifa_dstaddr)) {
+				IFNET_UNLOCK();
 				return ifa;
+			}
 		}
 	}
+	IFNET_UNLOCK();
 	return NULL;
 }
 
@@ -1188,12 +1234,15 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	u_int af = addr->sa_family;
 	const char *addr_data = addr->sa_data, *cplim;
 
+	IFNET_RLOCK();
 	if (af == AF_LINK) {
 		sdl = satocsdl(addr);
 		if (sdl->sdl_index && sdl->sdl_index < if_indexlim &&
 		    ifindex2ifnet[sdl->sdl_index] &&
-		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput)
-			return ifnet_addrs[sdl->sdl_index];
+		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput) {
+			ifa_maybe = ifnet_addrs[sdl->sdl_index];
+			goto out;
+		}
 	}
 #ifdef NETATALK
 	if (af == AF_APPLETALK) {
@@ -1206,14 +1255,16 @@ ifa_ifwithnet(const struct sockaddr *addr)
 			if (ifa == NULL)
 				continue;
 			sat2 = (struct sockaddr_at *)ifa->ifa_addr;
-			if (sat2->sat_addr.s_net == sat->sat_addr.s_net)
-				return ifa; /* exact match */
+			if (sat2->sat_addr.s_net == sat->sat_addr.s_net) {
+				ifa_maybe = ifa; /* exact match */
+				goto out;
+			}
 			if (ifa_maybe == NULL) {
 				/* else keep the if with the right range */
 				ifa_maybe = ifa;
 			}
 		}
-		return ifa_maybe;
+		goto out;
 	}
 #endif
 	IFNET_FOREACH(ifp) {
@@ -1242,6 +1293,8 @@ ifa_ifwithnet(const struct sockaddr *addr)
 				ifa_maybe = ifa;
 		}
 	}
+out:
+	IFNET_UNLOCK();
 	return ifa_maybe;
 }
 
@@ -1268,14 +1321,18 @@ ifa_ifwithaf(int af)
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
-			if (ifa->ifa_addr->sa_family == af)
+			if (ifa->ifa_addr->sa_family == af) {
+				IFNET_UNLOCK();
 				return ifa;
+			}
 		}
 	}
+	IFNET_UNLOCK();
 	return NULL;
 }
 
@@ -1480,12 +1537,14 @@ if_slowtimo(void *arg)
 	struct ifnet *ifp;
 	int s = splnet();
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_timer == 0 || --ifp->if_timer)
 			continue;
 		if (ifp->if_watchdog != NULL)
 			(*ifp->if_watchdog)(ifp);
 	}
+	IFNET_UNLOCK();
 	splx(s);
 	callout_reset(&if_slowtimo_ch, hz / IFNET_SLOWHZ, if_slowtimo, NULL);
 }
@@ -1532,7 +1591,7 @@ ifpromisc(struct ifnet *ifp, int pswitch)
 struct ifnet *
 ifunit(const char *name)
 {
-	struct ifnet *ifp;
+	struct ifnet *ifp = NULL;
 	const char *cp = name;
 	u_int unit = 0;
 	u_int i;
@@ -1544,30 +1603,35 @@ ifunit(const char *name)
 		unit = unit * 10 + (*cp - '0');
 	}
 
+	IFNET_RLOCK();
 	/*
 	 * If the number took all of the name, then it's a valid ifindex.
 	 */
 	if (i == IFNAMSIZ || (cp != name && *cp == '\0')) {
 		if (unit >= if_indexlim)
-			return NULL;
+			goto out;
 		ifp = ifindex2ifnet[unit];
 		if (ifp == NULL || ifp->if_output == if_nulloutput)
-			return NULL;
-		return ifp;
+			ifp = NULL;
+		goto out;
 	}
 
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 	 	if (strcmp(ifp->if_xname, name) == 0)
-			return ifp;
+			goto out;
 	}
-	return NULL;
+	ifp = NULL;
+out:
+	IFNET_UNLOCK();
+	return ifp;
 }
 
 ifnet_t *
 if_byindex(u_int idx)
 {
+	/* We don't need mutex because ifindex2ifnet never shrink. */
 	return (idx < if_indexlim) ? ifindex2ifnet[idx] : NULL;
 }
 
@@ -2087,11 +2151,15 @@ ifconf(u_long cmd, void *data)
 		space = 0;
 	else
 		space = ifc->ifc_len;
+
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			IFNET_UNLOCK();
 			return ENAMETOOLONG;
+		}
 		if (IFADDR_EMPTY(ifp)) {
 			/* Interface with no addresses - send zero sockaddr. */
 			memset(&ifr.ifr_addr, 0, sizeof(ifr.ifr_addr));
@@ -2101,8 +2169,10 @@ ifconf(u_long cmd, void *data)
 			}
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
+				if (error != 0) {
+					IFNET_UNLOCK();
 					return error;
+				}
 				ifrp++;
 				space -= sz;
 			}
@@ -2120,12 +2190,16 @@ ifconf(u_long cmd, void *data)
 			memcpy(&ifr.ifr_space, sa, sa->sa_len);
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
-					return (error);
+				if (error != 0) {
+					IFNET_UNLOCK();
+					return error;
+				}
 				ifrp++; space -= sz;
 			}
 		}
 	}
+	IFNET_UNLOCK();
+
 	if (ifrp != NULL) {
 		KASSERT(0 <= space && space <= ifc->ifc_len);
 		ifc->ifc_len -= space;
@@ -2287,6 +2361,22 @@ if_mcast_op(ifnet_t *ifp, const unsigned long cmd, const struct sockaddr *sa)
 	}
 
 	return rc;
+}
+
+/*
+ * May be called from interrupt context.
+ */
+void
+if_drain_all(void)
+{
+	struct ifnet *ifp;
+
+	mutex_enter(&ifnet_intr_lock);
+	IFNET_FOREACH(ifp) {
+		if (ifp->if_drain)
+			(*ifp->if_drain)(ifp);
+	}
+	mutex_exit(&ifnet_intr_lock);
 }
 
 static void

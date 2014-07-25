@@ -109,8 +109,10 @@ svr4_32_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval, int fd, u_long
 			 * entry per physical interface?
 			 */
 
+			IFNET_RLOCK();
 			IFNET_FOREACH(ifp)
 				ifnum += svr4_count_ifnum(ifp)
+			IFNET_UNLOCK();
 
 			DPRINTF(("SIOCGIFNUM %d\n", ifnum));
 			return copyout(&ifnum, data, sizeof(ifnum));

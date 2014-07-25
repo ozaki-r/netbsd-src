@@ -109,6 +109,7 @@ uuid_node(uint16_t *node)
 
 	s = splnet();
 	KERNEL_LOCK(1, NULL);
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		/* Walk the address list */
 		IFADDR_FOREACH(ifa, ifp) {
@@ -117,12 +118,14 @@ uuid_node(uint16_t *node)
 			    sdl->sdl_type == IFT_ETHER) {
 				/* Got a MAC address. */
 				memcpy(node, CLLADDR(sdl), UUID_NODE_LEN);
+				IFNET_UNLOCK();
 				KERNEL_UNLOCK_ONE(NULL);
 				splx(s);
 				return;
 			}
 		}
 	}
+	IFNET_UNLOCK();
 	KERNEL_UNLOCK_ONE(NULL);
 	splx(s);
 

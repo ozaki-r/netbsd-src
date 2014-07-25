@@ -1648,6 +1648,7 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 		}
 	}
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		addrsofif = 0;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1700,11 +1701,13 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 		}
 		if (iffound) {
 			*ifpp = ifp;
+			IFNET_UNLOCK();
 			return (addrsofif);
 		}
 
 		addrs += addrsofif;
 	}
+	IFNET_UNLOCK();
 
 	return (addrs);
 }

@@ -923,6 +923,7 @@ carp_send_ad_all(void)
 	struct carp_if *cif;
 	struct carp_softc *vh;
 
+	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_carp == NULL || ifp->if_type == IFT_CARP)
 			continue;
@@ -934,6 +935,7 @@ carp_send_ad_all(void)
 				carp_send_ad(vh);
 		}
 	}
+	IFNET_UNLOCK();
 }
 
 
