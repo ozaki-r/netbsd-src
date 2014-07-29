@@ -112,18 +112,21 @@ uuid_node(uint16_t *node)
 	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		/* Walk the address list */
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			sdl = (struct sockaddr_dl*)ifa->ifa_addr;
 			if (sdl != NULL && sdl->sdl_family == AF_LINK &&
 			    sdl->sdl_type == IFT_ETHER) {
 				/* Got a MAC address. */
 				memcpy(node, CLLADDR(sdl), UUID_NODE_LEN);
+				IFADDR_UNLOCK(ifp);
 				IFNET_UNLOCK();
 				KERNEL_UNLOCK_ONE(NULL);
 				splx(s);
 				return;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 	KERNEL_UNLOCK_ONE(NULL);

@@ -439,6 +439,7 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 		}
 		if (IFADDR_EMPTY(ifp))
 			continue;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			sa = ifa->ifa_addr;
 			if (sa->sa_family != AF_INET ||
@@ -450,6 +451,7 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0) {
+					IFADDR_UNLOCK(ifp);
 					IFNET_UNLOCK();
 					return error;
 				}
@@ -457,6 +459,7 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 			}
 			space -= sz;
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 
@@ -523,6 +526,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 			IFNET_UNLOCK();
 			goto out;
 		}
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			sadl = satosdl(ifa->ifa_addr);
 			/* only return ethernet addresses */
@@ -536,9 +540,12 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 			lreq.ifr_hwaddr.sa_family =
 				sadl->sdl_family;
 			error = copyout(&lreq, data, sizeof(lreq));
+
+			IFADDR_UNLOCK(ifp);
 			IFNET_UNLOCK();
 			goto out;
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 
@@ -558,6 +565,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 				break;
 			memcpy(lreq.ifr_name, ifp->if_xname,
 			       MIN(LINUX32_IFNAMSIZ, IFNAMSIZ));
+			IFADDR_RLOCK(ifp);
 			IFADDR_FOREACH(ifa, ifp) {
 				sadl = satosdl(ifa->ifa_addr);
 				/* only return ethernet addresses */
@@ -578,6 +586,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 				found = 1;
 				break;
 			}
+			IFADDR_UNLOCK(ifp);
 		}
 		IFNET_UNLOCK();
 	} else {

@@ -89,8 +89,10 @@ svr4_count_ifnum(struct ifnet *ifp)
 	struct ifaddr *ifa;
 	int ifnum = 0;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp)
 		ifnum++;
+	IFADDR_UNLOCK(ifp);
 
 	return MAX(1, ifnum);
 }

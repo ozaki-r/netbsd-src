@@ -972,6 +972,7 @@ in6_multicast_sysctl(SYSCTLFN_ARGS)
 
 	if (oldp == NULL) {
 		*oldlenp = 0;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr == NULL)
 				continue;
@@ -983,11 +984,13 @@ in6_multicast_sysctl(SYSCTLFN_ARGS)
 				    sizeof(uint32_t);
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 		return 0;
 	}
 
 	error = 0;
 	written = 0;
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;
@@ -1019,6 +1022,7 @@ in6_multicast_sysctl(SYSCTLFN_ARGS)
 		}
 	}
 done:
+	IFADDR_UNLOCK(ifp);
 	*oldlenp = written;
 	return error;
 }

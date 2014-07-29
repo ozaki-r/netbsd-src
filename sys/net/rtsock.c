@@ -1249,14 +1249,17 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 				panic("sysctl_iflist(2)");
 			}
 		}
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (af && af != ifa->ifa_addr->sa_family)
 				continue;
 			info.rti_info[RTAX_IFA] = ifa->ifa_addr;
 			info.rti_info[RTAX_NETMASK] = ifa->ifa_netmask;
 			info.rti_info[RTAX_BRD] = ifa->ifa_dstaddr;
-			if ((error = rt_msg2(RTM_NEWADDR, &info, 0, w, &len)))
+			if ((error = rt_msg2(RTM_NEWADDR, &info, 0, w, &len))) {
+				IFADDR_UNLOCK(ifp);
 				goto out;
+			}
 			if (w->w_where && w->w_tmem && w->w_needed <= 0) {
 				struct ifa_xmsghdr *ifam;
 
@@ -1266,11 +1269,14 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 				ifam->ifam_metric = ifa->ifa_metric;
 				ifam->ifam_addrs = info.rti_addrs;
 				error = copyout(w->w_tmem, w->w_where, len);
-				if (error)
+				if (error) {
+					IFADDR_UNLOCK(ifp);
 					goto out;
+				}
 				w->w_where = (char *)w->w_where + len;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 		info.rti_info[RTAX_IFA] = info.rti_info[RTAX_NETMASK] =
 		    info.rti_info[RTAX_BRD] = NULL;
 	}

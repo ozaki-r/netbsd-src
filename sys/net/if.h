@@ -250,6 +250,7 @@ typedef struct ifnet {
 	void	*if_softc;		/* lower-level data for this if */
 	TAILQ_ENTRY(ifnet) if_list;	/* all struct ifnets are chained */
 	TAILQ_HEAD(, ifaddr) if_addrlist; /* linked list of addresses per if */
+	krwlock_t	*if_addrlist_lock;
 	char	if_xname[IFNAMSIZ];	/* external name (name + unit) */
 	int	if_pcount;		/* number of promiscuous listeners */
 	struct bpf_if *if_bpf;		/* packet filter structure */
@@ -993,6 +994,11 @@ __END_DECLS
 #define	IFADDR_FOREACH(__ifa, __ifp)	TAILQ_FOREACH(__ifa, \
 					    &(__ifp)->if_addrlist, ifa_list)
 #define	IFADDR_EMPTY(__ifp)		TAILQ_EMPTY(&(__ifp)->if_addrlist)
+
+#define	IFADDR_RLOCK(__ifp)	rw_enter(__ifp->if_addrlist_lock, RW_READER)
+#define	IFADDR_WLOCK(__ifp)	rw_enter(__ifp->if_addrlist_lock, RW_WRITER)
+#define	IFADDR_UNLOCK(__ifp)	rw_exit(__ifp->if_addrlist_lock)
+#define	IFADDR_WLOCKED(__ifp)	rw_write_held(__ifp->if_addrlist_lock)
 
 extern struct ifnet_head ifnet_list;
 extern krwlock_t ifnet_lock;

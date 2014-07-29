@@ -1651,6 +1651,7 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 	IFNET_RLOCK();
 	IFNET_FOREACH(ifp) {
 		addrsofif = 0;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET6)
 				continue;
@@ -1699,6 +1700,8 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 
 			addrsofif++; /* count the address */
 		}
+		IFADDR_UNLOCK(ifp);
+
 		if (iffound) {
 			*ifpp = ifp;
 			IFNET_UNLOCK();
@@ -1733,6 +1736,7 @@ ni6_store_addrs(struct icmp6_nodeinfo *ni6,
 
 	for (; ifp; ifp = TAILQ_NEXT(ifp, if_list))
 	{
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET6)
 				continue;
@@ -1789,6 +1793,7 @@ ni6_store_addrs(struct icmp6_nodeinfo *ni6,
 				 * Set the truncate flag and return.
 				 */
 				nni6->ni_flags |= NI_NODEADDR_FLAG_TRUNCATE;
+				IFADDR_UNLOCK(ifp);
 				return (copied);
 			}
 
@@ -1835,6 +1840,8 @@ ni6_store_addrs(struct icmp6_nodeinfo *ni6,
 			resid -= (sizeof(struct in6_addr) + sizeof(u_int32_t));
 			copied += (sizeof(struct in6_addr) + sizeof(u_int32_t));
 		}
+		IFADDR_UNLOCK(ifp);
+
 		if (ifp0)	/* we need search only on the specified IF */
 			break;
 	}

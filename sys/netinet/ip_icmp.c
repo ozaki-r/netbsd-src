@@ -702,7 +702,10 @@ icmp_reflect(struct mbuf *m)
 	/* look for packet sent to broadcast address */
 	if (ia == NULL && m->m_pkthdr.rcvif &&
 	    (m->m_pkthdr.rcvif->if_flags & IFF_BROADCAST)) {
-		IFADDR_FOREACH(ifa, m->m_pkthdr.rcvif) {
+		struct ifnet *ifp = m->m_pkthdr.rcvif;
+
+		IFADDR_RLOCK(ifp);
+		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 			if (in_hosteq(t,ifatoia(ifa)->ia_broadaddr.sin_addr)) {
@@ -710,6 +713,7 @@ icmp_reflect(struct mbuf *m)
 				break;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 
 	if (ia)
@@ -756,12 +760,16 @@ icmp_reflect(struct mbuf *m)
 	 * when the incoming packet was encapsulated
 	 */
 	if (sin == NULL && m->m_pkthdr.rcvif) {
-		IFADDR_FOREACH(ifa, m->m_pkthdr.rcvif) {
+		struct ifnet *ifp = m->m_pkthdr.rcvif;
+
+		IFADDR_RLOCK(ifp);
+		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 			sin = &(ifatoia(ifa)->ia_addr);
 			break;
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 
 	/*

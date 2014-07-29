@@ -328,6 +328,7 @@ in6_get_hw_ifid(struct ifnet *ifp, struct in6_addr *in6)
 	static u_int8_t allone[8] =
 		{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_LINK)
 			continue;
@@ -339,6 +340,7 @@ in6_get_hw_ifid(struct ifnet *ifp, struct in6_addr *in6)
 		if (ifa == ifp->if_hwdl)
 			break;
 	}
+	IFADDR_UNLOCK(ifp);
 
 	if (sdl == NULL)
 		return -1;

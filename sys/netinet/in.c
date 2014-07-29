@@ -746,6 +746,7 @@ in_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
 			}
 		}
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
@@ -756,6 +757,8 @@ in_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
 			if (candidate.s_addr == match.s_addr)
 				break;
 		}
+		IFADDR_UNLOCK(ifp);
+
 		if (ifa == NULL)
 			return EADDRNOTAVAIL;
 		ia = (struct in_ifaddr *)ifa;
@@ -1055,7 +1058,8 @@ in_broadcast(struct in_addr in, struct ifnet *ifp)
 	 * with a broadcast address.
 	 */
 #define ia (ifatoia(ifa))
-	IFADDR_FOREACH(ifa, ifp)
+	IFADDR_RLOCK(ifp);
+	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET &&
 		    !in_hosteq(in, ia->ia_addr.sin_addr) &&
 		    (in_hosteq(in, ia->ia_broadaddr.sin_addr) ||
@@ -1065,9 +1069,13 @@ in_broadcast(struct in_addr in, struct ifnet *ifp)
 		       * Check for old-style (host 0) broadcast.
 		       */
 		      (in.s_addr == ia->ia_subnet ||
-		       in.s_addr == ia->ia_net))))
+		       in.s_addr == ia->ia_net)))) {
+			IFADDR_UNLOCK(ifp);
 			return 1;
-	return (0);
+		}
+	}
+	IFADDR_UNLOCK(ifp);
+	return 0;
 #undef ia
 }
 

@@ -152,18 +152,22 @@ link_control(struct socket *so, unsigned long cmd, void *data,
 
 		s = splnet();
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (sockaddr_cmp(&u.sa, ifa->ifa_addr) == 0)
 				break;
 		}
+		IFADDR_UNLOCK(ifp);
 
 		switch (cmd) {
 		case SIOCGLIFADDR:
 			if ((iflr->flags & IFLR_PREFIX) == 0) {
+				IFADDR_RLOCK(ifp);
 				IFADDR_FOREACH(ifa, ifp) {
 					if (ifa->ifa_addr->sa_family == AF_LINK)
 						break;
 				}
+				IFADDR_UNLOCK(ifp);
 			}
 			if (ifa == NULL) {
 				error = EADDRNOTAVAIL;

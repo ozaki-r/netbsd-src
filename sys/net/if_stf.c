@@ -305,8 +305,8 @@ stf_getsrcifa6(struct ifnet *ifp)
 	struct sockaddr_in6 *sin6;
 	struct in_addr in;
 
-	IFADDR_FOREACH(ifa, ifp)
-	{
+	IFADDR_RLOCK(ifp);
+	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;
 		if (ifa->ifa_addr->sa_family != AF_INET6)
@@ -320,8 +320,10 @@ stf_getsrcifa6(struct ifnet *ifp)
 		if (ia4 == NULL)
 			continue;
 
+		IFADDR_UNLOCK(ifp);
 		return (struct in6_ifaddr *)ifa;
 	}
+	IFADDR_UNLOCK(ifp);
 
 	return NULL;
 }

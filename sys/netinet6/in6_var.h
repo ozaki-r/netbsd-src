@@ -508,12 +508,15 @@ ifp_to_ia6(struct ifnet *ifp)
 {
 	struct ifaddr *ifa;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;
 		if (ifa->ifa_addr->sa_family == AF_INET6)
 			break;
 	}
+	IFADDR_UNLOCK(ifp);
+
 	return (struct in6_ifaddr *)ifa;
 }
 

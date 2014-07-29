@@ -313,9 +313,12 @@ dmcinit(struct ifnet *ifp)
 	 * Check to see that an address has been set
 	 * (both local and destination for an address family).
 	 */
-	IFADDR_FOREACH(ifa, ifp)
+	IFADDR_RLOCK(ifp);
+	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family && ifa->ifa_dstaddr->sa_family)
 			break;
+	}
+	IFADDR_UNLOCK(ifp);
 	if (ifa == (struct ifaddr *) 0)
 		return 0;
 

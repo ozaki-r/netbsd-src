@@ -589,12 +589,15 @@ agr_addport(struct ifnet *ifp, struct ifnet *ifp_port)
 	}
 	port->port_flags = AGRPORT_LARVAL;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp_port) {
 		if (ifa->ifa_addr->sa_family != AF_LINK) {
+			IFADDR_UNLOCK(ifp);
 			error = EBUSY;
 			goto out;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 
 	if (sc->sc_nports == 0) {
 		switch (ifp_port->if_type) {

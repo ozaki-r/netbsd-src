@@ -609,6 +609,7 @@ ip_input(struct mbuf *m)
 	if (ia != NULL)
 		goto ours;
 	if (ifp->if_flags & IFF_BROADCAST) {
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
@@ -620,15 +621,20 @@ ip_input(struct mbuf *m)
 			     * either for subnet or net.
 			     */
 			    ip->ip_dst.s_addr == ia->ia_subnet ||
-			    ip->ip_dst.s_addr == ia->ia_net)
+			    ip->ip_dst.s_addr == ia->ia_net) {
+				IFADDR_UNLOCK(ifp);
 				goto ours;
+			}
 			/*
 			 * An interface with IP address zero accepts
 			 * all packets that arrive on that interface.
 			 */
-			if (in_nullhost(ia->ia_addr.sin_addr))
+			if (in_nullhost(ia->ia_addr.sin_addr)) {
+				IFADDR_UNLOCK(ifp);
 				goto ours;
+			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	if (IN_MULTICAST(ip->ip_dst.s_addr)) {
 #ifdef MROUTING

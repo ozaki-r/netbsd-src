@@ -1657,6 +1657,7 @@ in6_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
 			}
 		}
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET6)
 				continue;
@@ -1677,6 +1678,8 @@ in6_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
 			if (IN6_ARE_ADDR_EQUAL(&candidate, &match))
 				break;
 		}
+		IFADDR_UNLOCK(ifp);
+
 		if (!ifa)
 			return EADDRNOTAVAIL;
 		ia = ifa2ia6(ifa);
@@ -1753,6 +1756,7 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 	 * if this is its first address,
 	 * and to validate the address if necessary.
 	 */
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;	/* just for safety */
@@ -1760,6 +1764,7 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 			continue;
 		ifacount++;
 	}
+	IFADDR_UNLOCK(ifp);
 
 	ia->ia_addr = *sin6;
 
@@ -1820,6 +1825,7 @@ in6ifa_ifpforlinklocal(const struct ifnet *ifp, const int ignoreflags)
 {
 	struct ifaddr *best_ifa = NULL, *ifa;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;	/* just for safety */
@@ -1831,6 +1837,7 @@ in6ifa_ifpforlinklocal(const struct ifnet *ifp, const int ignoreflags)
 			continue;
 		best_ifa = bestifa(best_ifa, ifa);
 	}
+	IFADDR_UNLOCK(ifp);
 
 	return (struct in6_ifaddr *)best_ifa;
 }
@@ -1844,6 +1851,7 @@ in6ifa_ifpwithaddr(const struct ifnet *ifp, const struct in6_addr *addr)
 {
 	struct ifaddr *best_ifa = NULL, *ifa;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr == NULL)
 			continue;	/* just for safety */
@@ -1853,6 +1861,7 @@ in6ifa_ifpwithaddr(const struct ifnet *ifp, const struct in6_addr *addr)
 			continue;
 		best_ifa = bestifa(best_ifa, ifa);
 	}
+	IFADDR_UNLOCK(ifp);
 
 	return (struct in6_ifaddr *)best_ifa;
 }
@@ -2056,6 +2065,7 @@ in6_ifawithifp(struct ifnet *ifp, struct in6_addr *dst)
 	 * If two or more, return one which matches the dst longest.
 	 * If none, return one of global addresses assigned other ifs.
 	 */
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
@@ -2090,9 +2100,12 @@ in6_ifawithifp(struct ifnet *ifp, struct in6_addr *dst)
 		} else if (tlen == blen)
 			best_ia = bestia(best_ia, ia);
 	}
+	IFADDR_UNLOCK(ifp);
+
 	if (best_ia != NULL)
 		return best_ia;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
@@ -2111,6 +2124,8 @@ in6_ifawithifp(struct ifnet *ifp, struct in6_addr *dst)
 
 		best_ia = bestia(best_ia, ia);
 	}
+	IFADDR_UNLOCK(ifp);
+
 	if (best_ia != NULL)
 		return best_ia;
 
@@ -2138,6 +2153,7 @@ in6_if_link_up(struct ifnet *ifp)
 	if ((ifp->if_flags & (IFF_UP|IFF_RUNNING)) != (IFF_UP|IFF_RUNNING))
 		return;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
@@ -2169,6 +2185,7 @@ in6_if_link_up(struct ifnet *ifp)
 			nd6_dad_start(ifa, rand_delay + 1);
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 
 	/* Restore any detached prefixes */
 	pfxlist_onlink_check();
@@ -2198,6 +2215,7 @@ in6_if_link_down(struct ifnet *ifp)
 	/* Any prefixes on this interface should be detached as well */
 	pfxlist_onlink_check();
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
@@ -2223,6 +2241,7 @@ in6_if_link_down(struct ifnet *ifp)
 			nd6_newaddrmsg(ifa);
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 }
 
 void

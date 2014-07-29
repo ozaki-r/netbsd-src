@@ -358,6 +358,7 @@ tunclose(dev_t dev, int flag, int mode,
 		if (ifp->if_flags & IFF_RUNNING) {
 			/* find internet addresses and delete routes */
 			struct ifaddr *ifa;
+			IFADDR_RLOCK(ifp);
 			IFADDR_FOREACH(ifa, ifp) {
 #if defined(INET) || defined(INET6)
 				if (ifa->ifa_addr->sa_family == AF_INET ||
@@ -369,6 +370,7 @@ tunclose(dev_t dev, int flag, int mode,
 				}
 #endif
 			}
+			IFADDR_UNLOCK(ifp);
 		}
 	}
 out_nolock:
@@ -390,6 +392,8 @@ tuninit(struct tun_softc *tp)
 	ifp->if_flags |= IFF_UP | IFF_RUNNING;
 
 	tp->tun_flags &= ~(TUN_IASET|TUN_DSTADDR);
+	// XXX need spin lock
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 #ifdef INET
 		if (ifa->ifa_addr->sa_family == AF_INET) {
@@ -424,6 +428,7 @@ tuninit(struct tun_softc *tp)
 		}
 #endif /* INET6 */
 	}
+	IFADDR_UNLOCK(ifp);
 	mutex_exit(&tp->tun_lock);
 }
 

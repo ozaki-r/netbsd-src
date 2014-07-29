@@ -191,6 +191,7 @@ static int ifioctl_attach(struct ifnet *);
 static void ifioctl_detach(struct ifnet *);
 static void ifnet_lock_enter(struct ifnet_lock *);
 static void ifnet_lock_exit(struct ifnet_lock *);
+//static int  ifnet_lock_owned(struct ifnet_lock *);
 static void if_detach_queues(struct ifnet *, struct ifqueue *);
 static void sysctl_sndq_setup(struct sysctllog **, const char *,
     struct ifaltq *);
@@ -354,6 +355,8 @@ if_set_sadl(struct ifnet *ifp, const void *lla, u_char addrlen, bool factory)
 	struct ifaddr *ifa;
 	struct sockaddr_dl *sdl;
 
+	//KASSERT(ifnet_lock_owned(ifp->if_ioctl_lock));
+
 	ifp->if_addrlen = addrlen;
 	if_alloc_sadl(ifp);
 	ifa = ifp->if_dl;
@@ -401,6 +404,9 @@ static void
 if_sadl_setrefs(struct ifnet *ifp, struct ifaddr *ifa)
 {
 	const struct sockaddr_dl *sdl;
+
+	KASSERT(IFADDR_WLOCKED(ifp));
+
 	IFNET_WLOCK();
 	ifnet_addrs[ifp->if_index] = ifa;
 	IFNET_UNLOCK();
@@ -434,8 +440,10 @@ if_alloc_sadl(struct ifnet *ifp)
 
 	ifa = if_dl_create(ifp, &sdl);
 
+	IFADDR_WLOCK(ifp);
 	ifa_insert(ifp, ifa);
 	if_sadl_setrefs(ifp, ifa);
+	IFADDR_UNLOCK(ifp);
 }
 
 static void
@@ -443,6 +451,7 @@ if_deactivate_sadl(struct ifnet *ifp)
 {
 	struct ifaddr *ifa;
 
+	KASSERT(IFADDR_WLOCKED(ifp));
 	KASSERT(ifp->if_dl != NULL);
 
 	ifa = ifp->if_dl;
@@ -464,13 +473,20 @@ if_activate_sadl(struct ifnet *ifp, struct ifaddr *ifa,
 {
 	int s;
 
+	KASSERT(!cpu_intr_p());
+
 	s = splnet();
+
+	IFADDR_WLOCK(ifp);
 
 	if_deactivate_sadl(ifp);
 
 	if_sadl_setrefs(ifp, ifa);
 	IFADDR_FOREACH(ifa, ifp)
 		rtinit(ifa, RTM_LLINFO_UPD, 0);
+
+	IFADDR_UNLOCK(ifp);
+
 	splx(s);
 }
 
@@ -501,6 +517,7 @@ if_free_sadl(struct ifnet *ifp)
 	KASSERT(ifp->if_dl != NULL);
 
 	s = splnet();
+	IFADDR_WLOCK(ifp);
 	rtinit(ifa, RTM_DELETE, 0);
 	ifa_remove(ifp, ifa);
 	if_deactivate_sadl(ifp);
@@ -508,6 +525,7 @@ if_free_sadl(struct ifnet *ifp)
 		IFAFREE(ifa);
 		ifp->if_hwdl = NULL;
 	}
+	IFADDR_UNLOCK(ifp);
 	splx(s);
 }
 
@@ -599,6 +617,9 @@ if_attach(ifnet_t *ifp)
 	KASSERT(if_indexlim > 0);
 
 	TAILQ_INIT(&ifp->if_addrlist);
+	ifp->if_addrlist_lock = rw_obj_alloc();
+	if (ifp->if_addrlist_lock == NULL)
+		panic("%s: ifioctl_attach() failed", __func__);
 
 	IFNET_WLOCK();
 
@@ -723,11 +744,13 @@ if_purgeaddrs(struct ifnet *ifp, int family, void (*purgeaddr)(struct ifaddr *))
 {
 	struct ifaddr *ifa;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != family)
 			continue;
 		(*purgeaddr)(ifa);
 	}
+	IFADDR_UNLOCK(ifp);
 }
 
 /*
@@ -795,6 +818,7 @@ if_detach(struct ifnet *ifp)
 	 * least one ifaddr.
 	 */
 again:
+	IFADDR_WLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		family = ifa->ifa_addr->sa_family;
 #ifdef IFAREF_DEBUG
@@ -841,6 +865,7 @@ again:
 		}
 		goto again;
 	}
+	IFADDR_UNLOCK(ifp);
 
 	if_free_sadl(ifp);
 
@@ -1170,18 +1195,24 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != addr->sa_family)
 				continue;
-			if (equal(addr, ifa->ifa_addr))
+			if (equal(addr, ifa->ifa_addr)) {
+				IFADDR_UNLOCK(ifp);
 				goto found;
+			}
 			if ((ifp->if_flags & IFF_BROADCAST) &&
 			    ifa->ifa_broadaddr &&
 			    /* IP6 doesn't have broadcast */
 			    ifa->ifa_broadaddr->sa_len != 0 &&
-			    equal(ifa->ifa_broadaddr, addr))
+			    equal(ifa->ifa_broadaddr, addr)) {
+				IFADDR_UNLOCK(ifp);
 				goto found;
+			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	ifa = NULL;
 found:
@@ -1206,15 +1237,18 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 			continue;
 		if ((ifp->if_flags & IFF_POINTOPOINT) == 0)
 			continue;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != addr->sa_family ||
 			    ifa->ifa_dstaddr == NULL)
 				continue;
 			if (equal(addr, ifa->ifa_dstaddr)) {
+				IFADDR_UNLOCK(ifp);
 				IFNET_UNLOCK();
 				return ifa;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 	return NULL;
@@ -1270,6 +1304,7 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			const char *cp, *cp2, *cp3;
 
@@ -1292,6 +1327,7 @@ ifa_ifwithnet(const struct sockaddr *addr)
 			    (void *)ifa_maybe->ifa_netmask))
 				ifa_maybe = ifa;
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 out:
 	IFNET_UNLOCK();
@@ -1325,12 +1361,15 @@ ifa_ifwithaf(int af)
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family == af) {
+				IFADDR_UNLOCK(ifp);
 				IFNET_UNLOCK();
 				return ifa;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 	return NULL;
@@ -1355,6 +1394,7 @@ ifaof_ifpforaddr(const struct sockaddr *addr, struct ifnet *ifp)
 	if (af >= AF_MAX)
 		return NULL;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != af)
 			continue;
@@ -1362,8 +1402,10 @@ ifaof_ifpforaddr(const struct sockaddr *addr, struct ifnet *ifp)
 		if (ifa->ifa_netmask == NULL) {
 			if (equal(addr, ifa->ifa_addr) ||
 			    (ifa->ifa_dstaddr &&
-			     equal(addr, ifa->ifa_dstaddr)))
+			     equal(addr, ifa->ifa_dstaddr))) {
+				IFADDR_UNLOCK(ifp);
 				return ifa;
+			}
 			continue;
 		}
 		cp = addr->sa_data;
@@ -1374,9 +1416,12 @@ ifaof_ifpforaddr(const struct sockaddr *addr, struct ifnet *ifp)
 			if ((*cp++ ^ *cp2++) & *cp3)
 				break;
 		}
-		if (cp3 == cplim)
+		if (cp3 == cplim) {
+			IFADDR_UNLOCK(ifp);
 			return ifa;
+		}
 	}
+	IFADDR_UNLOCK(ifp);
 	return ifa_maybe;
 }
 
@@ -1482,8 +1527,12 @@ if_down(struct ifnet *ifp)
 
 	ifp->if_flags &= ~IFF_UP;
 	nanotime(&ifp->if_lastchange);
+
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp)
 		pfctlinput(PRC_IFDOWN, ifa->ifa_addr);
+	IFADDR_UNLOCK(ifp);
+
 	IFQ_PURGE(&ifp->if_snd);
 #if NCARP > 0
 	if (ifp->if_carp)
@@ -1512,8 +1561,10 @@ if_up(struct ifnet *ifp)
 	nanotime(&ifp->if_lastchange);
 #ifdef notyet
 	/* this has no effect on IP, and will kill all ISO connections XXX */
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp)
 		pfctlinput(PRC_IFUP, ifa->ifa_addr);
+	IFADDR_UNLOCK(ifp);
 #endif
 #if NCARP > 0
 	if (ifp->if_carp)
@@ -1826,6 +1877,7 @@ ifaddrpref_ioctl(struct socket *so, u_long cmd, void *data, struct ifnet *ifp)
 
 	sockaddr_externalize(&v.sa, sizeof(v.ss), sa);
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != sa->sa_family)
 			continue;
@@ -1833,6 +1885,8 @@ ifaddrpref_ioctl(struct socket *so, u_long cmd, void *data, struct ifnet *ifp)
 		if (sockaddr_cmp(&u.sa, &v.sa) == 0)
 			break;
 	}
+	IFADDR_UNLOCK(ifp);
+
 	if (ifa == NULL)
 		return EADDRNOTAVAIL;
 
@@ -1866,6 +1920,14 @@ ifnet_lock_enter(struct ifnet_lock *il)
 	percpu_putref(il->il_nenter);
 	mutex_enter(&il->il_lock);
 }
+
+#if 0
+static int
+ifnet_lock_owned(struct ifnet_lock *il)
+{
+	return mutex_owned(&il->il_lock);
+}
+#endif
 
 static void
 ifnet_lock_exit(struct ifnet_lock *il)
@@ -2178,6 +2240,7 @@ ifconf(u_long cmd, void *data)
 			}
 		}
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			struct sockaddr *sa = ifa->ifa_addr;
 			/* all sockaddrs must fit in sockaddr_storage */
@@ -2191,12 +2254,14 @@ ifconf(u_long cmd, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0) {
+					IFADDR_UNLOCK(ifp);
 					IFNET_UNLOCK();
 					return error;
 				}
 				ifrp++; space -= sz;
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 	IFNET_UNLOCK();
 

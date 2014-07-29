@@ -322,11 +322,13 @@ in_getifa(struct ifaddr *ifa, const struct sockaddr *dst0)
 
 	/* Find out the index of this ifaddr. */
 	idx = 0;
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(alt_ifa, ifa->ifa_ifp) {
 		if (alt_ifa == best_ifa)
 			break;
 		idx++;
 	}
+	IFADDR_UNLOCK(ifp);
 	in_score(score_src, best_score, &scorelen, &IA_SIN(best_ifa)->sin_addr,
 	    best_ifa->ifa_preference, idx, &dst->sin_addr);
 
@@ -340,6 +342,7 @@ in_getifa(struct ifaddr *ifa, const struct sockaddr *dst0)
 #endif /* GETIFA_DEBUG */
 
 	idx = -1;
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(alt_ifa, ifa->ifa_ifp) {
 		++idx;
 		src = IA_SIN(alt_ifa);
@@ -363,6 +366,7 @@ in_getifa(struct ifaddr *ifa, const struct sockaddr *dst0)
 			best_ifa = alt_ifa;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 #ifdef GETIFA_DEBUG
 	if (in_selsrc_debug) {
 		printf("%s: choose src %#" PRIx32 " score ", __func__,

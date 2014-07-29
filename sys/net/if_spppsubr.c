@@ -4826,6 +4826,7 @@ sppp_get_ip_addrs(struct sppp *sp, uint32_t *src, uint32_t *dst, uint32_t *srcma
 	 * aliases don't make any sense on a p2p link anyway.
 	 */
 	si = 0;
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET) {
 			si = (struct sockaddr_in *)ifa->ifa_addr;
@@ -4834,6 +4835,8 @@ sppp_get_ip_addrs(struct sppp *sp, uint32_t *src, uint32_t *dst, uint32_t *srcma
 				break;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
+
 	if (ifa) {
 		if (si && si->sin_addr.s_addr) {
 			ssrc = si->sin_addr.s_addr;
@@ -4866,13 +4869,16 @@ sppp_set_ip_addrs(struct sppp *sp, uint32_t myaddr, uint32_t hisaddr)
 	 * aliases don't make any sense on a p2p link anyway.
 	 */
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET) {
 			si = (struct sockaddr_in *)ifa->ifa_addr;
 			dest = (struct sockaddr_in *)ifa->ifa_dstaddr;
+			IFADDR_UNLOCK(ifp);
 			goto found;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 	return;
 
 found:
@@ -4931,13 +4937,16 @@ sppp_clear_ip_addrs(struct sppp *sp)
 	 * aliases don't make any sense on a p2p link anyway.
 	 */
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET) {
 			si = (struct sockaddr_in *)ifa->ifa_addr;
 			dest = (struct sockaddr_in *)ifa->ifa_dstaddr;
+			IFADDR_UNLOCK(ifp);
 			goto found;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 	return;
 
 found:
@@ -4978,13 +4987,17 @@ sppp_get_ip6_addrs(struct sppp *sp, struct in6_addr *src, struct in6_addr *dst,
 	 * aliases don't make any sense on a p2p link anyway.
 	 */
 	si = 0;
-	IFADDR_FOREACH(ifa, ifp)
+	IFADDR_RLOCK(ifp);
+	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET6) {
 			si = (struct sockaddr_in6 *)ifa->ifa_addr;
 			sm = (struct sockaddr_in6 *)ifa->ifa_netmask;
 			if (si && IN6_IS_ADDR_LINKLOCAL(&si->sin6_addr))
 				break;
 		}
+	}
+	IFADDR_UNLOCK(ifp);
+
 	if (ifa) {
 		if (si && !IN6_IS_ADDR_UNSPECIFIED(&si->sin6_addr)) {
 			memcpy(&ssrc, &si->sin6_addr, sizeof(ssrc));
@@ -5031,8 +5044,8 @@ sppp_set_ip6_addr(struct sppp *sp, const struct in6_addr *src)
 	 */
 
 	sin6 = NULL;
-	IFADDR_FOREACH(ifa, ifp)
-	{
+	IFADDR_RLOCK(ifp);
+	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == AF_INET6)
 		{
 			sin6 = (struct sockaddr_in6 *)ifa->ifa_addr;
@@ -5040,6 +5053,7 @@ sppp_set_ip6_addr(struct sppp *sp, const struct in6_addr *src)
 				break;
 		}
 	}
+	IFADDR_UNLOCK(ifp);
 
 	if (ifa && sin6)
 	{

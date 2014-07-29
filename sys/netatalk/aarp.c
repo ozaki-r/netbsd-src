@@ -135,6 +135,7 @@ at_ifawithnet(const struct sockaddr_at *sat, struct ifnet *ifp)
 	struct sockaddr_at *sat2;
 	struct netrange *nr;
 
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_APPLETALK)
 			continue;
@@ -149,6 +150,7 @@ at_ifawithnet(const struct sockaddr_at *sat, struct ifnet *ifp)
 		    && (ntohs(nr->nr_lastnet) >= ntohs(sat->sat_addr.s_net)))
 			break;
 	}
+	IFADDR_UNLOCK(ifp);
 	return ifa;
 }
 
@@ -367,12 +369,14 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 		 * Since we don't know the net, we just look for the first
 		 * phase 1 address on the interface.
 		 */
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ia, ifp) {
 			aa = (struct at_ifaddr *)ia;
 			if (AA_SAT(aa)->sat_family == AF_APPLETALK &&
 			    (aa->aa_flags & AFA_PHASE2) == 0)
 				break;
 		}
+		IFADDR_UNLOCK(ifp);
 		if (ia == NULL) {
 			m_freem(m);
 			return;
@@ -560,12 +564,14 @@ aarpprobe(void *arp)
          * interface with the same address as we're looking for. If the
          * net is phase 2, generate an 802.2 and SNAP header.
          */
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ia, ifp) {
 		aa = (struct at_ifaddr *)ia;
 		if (AA_SAT(aa)->sat_family == AF_APPLETALK &&
 		    (aa->aa_flags & AFA_PROBING))
 			break;
 	}
+	IFADDR_UNLOCK(ifp);
 	if (ia == NULL) {	/* serious error XXX */
 		printf("aarpprobe why did this happen?!\n");
 		mutex_exit(softnet_lock);

@@ -816,6 +816,7 @@ vmt_tclo_tick(void *xarg)
 				continue;
 			}
 
+			IFADDR_RLOCK(iface);
 			IFADDR_FOREACH(iface_addr, iface) {
 				if (iface_addr->ifa_addr->sa_family != AF_INET) {
 					continue;
@@ -824,6 +825,7 @@ vmt_tclo_tick(void *xarg)
 				guest_ip = satosin(iface_addr->ifa_addr);
 				break;
 			}
+			IFADDR_UNLOCK(iface);
 		}
 		IFNET_UNLOCK();
 

@@ -536,6 +536,7 @@ pfi_instance_add(struct ifnet *ifp, int net, int flags)
 
 	if (ifp == NULL)
 		return;
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ia, ifp) {
 		if (ia->ifa_addr == NULL)
 			continue;
@@ -582,6 +583,7 @@ pfi_instance_add(struct ifnet *ifp, int net, int flags)
 		else
 			pfi_address_add(ia->ifa_addr, af, net2);
 	}
+	IFADDR_UNLOCK(ifp);
 }
 
 void

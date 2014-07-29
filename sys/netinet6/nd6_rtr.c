@@ -915,6 +915,7 @@ purge_detached(struct ifnet *ifp)
 		    !LIST_EMPTY(&pr->ndpr_advrtrs)))
 			continue;
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family != AF_INET6)
 				continue;
@@ -924,6 +925,7 @@ purge_detached(struct ifnet *ifp)
 				in6_purgeaddr(ifa);
 			}
 		}
+		IFADDR_UNLOCK(ifp);
 		if (pr->ndpr_refcnt == 0)
 			prelist_remove(pr);
 	}
@@ -1187,6 +1189,7 @@ prelist_update(struct nd_prefixctl *new,
 	 * consider autoconfigured addresses while RFC2462 simply said
 	 * "address".
 	 */
+	IFADDR_RLOCK(ifp);
 	IFADDR_FOREACH(ifa, ifp) {
 		struct in6_ifaddr *ifa6;
 		u_int32_t remaininglifetime;
@@ -1308,6 +1311,8 @@ prelist_update(struct nd_prefixctl *new,
 		ifa6->ia6_lifetime = lt6_tmp;
 		ifa6->ia6_updatetime = time_second;
 	}
+	IFADDR_UNLOCK(ifp);
+
 	if (ia6_match == NULL && new->ndpr_vltime) {
 		int ifidlen;
 
@@ -1652,10 +1657,12 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	    IN6_IFF_NOTREADY | IN6_IFF_ANYCAST);
 	if (ifa == NULL) {
 		/* XXX: freebsd does not have ifa_ifwithaf */
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family == AF_INET6)
 				break;
 		}
+		IFADDR_UNLOCK(ifp);
 		/* should we care about ia6_flags? */
 	}
 	if (ifa == NULL) {

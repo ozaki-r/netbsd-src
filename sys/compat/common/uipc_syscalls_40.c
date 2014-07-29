@@ -64,6 +64,7 @@ compat_ifconf(u_long cmd, void *data)
 			continue;
 		}
 
+		IFADDR_RLOCK(ifp);
 		IFADDR_FOREACH(ifa, ifp) {
 			struct sockaddr *sa = ifa->ifa_addr;
 #ifdef COMPAT_OSOCK
@@ -104,10 +105,13 @@ compat_ifconf(u_long cmd, void *data)
 						 (char *)&ifrp->ifr_addr);
 				}
 			}
-			if (error != 0)
+			if (error != 0) {
+				IFADDR_UNLOCK(ifp);
 				goto out;
+			}
 			space -= sz;
 		}
+		IFADDR_UNLOCK(ifp);
 	}
 
 	if (ifrp != NULL)
