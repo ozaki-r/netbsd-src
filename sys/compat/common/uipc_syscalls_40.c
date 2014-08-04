@@ -38,13 +38,14 @@ compat_ifconf(u_long cmd, void *data)
 	struct oifreq ifr, *ifrp;
 	int space, error = 0;
 	const int sz = (int)sizeof(ifr);
+	int s;
 
 	if ((ifrp = ifc->ifc_req) == NULL)
 		space = 0;
 	else
 		space = ifc->ifc_len;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
@@ -117,7 +118,7 @@ compat_ifconf(u_long cmd, void *data)
 	error = 0;
 
 out:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return error;
 }
 #endif

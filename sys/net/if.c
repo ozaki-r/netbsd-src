@@ -170,7 +170,6 @@ static struct ifaddr **		ifnet_addrs = NULL;
 /*
  * Mutex to protect the above objects.
  */
-krwlock_t			ifnet_lock __cacheline_aligned;
 static kmutex_t			ifnet_intr_lock __cacheline_aligned;
 
 static callout_t		if_slowtimo_ch;
@@ -257,7 +256,6 @@ ifinit(void)
 void
 ifinit1(void)
 {
-	rw_init(&ifnet_lock);
 	mutex_init(&ifnet_intr_lock, MUTEX_DEFAULT, IPL_NET);
 	TAILQ_INIT(&ifnet_list);
 	if_indexlim = 8;
@@ -408,9 +406,9 @@ static void
 if_sadl_setrefs(struct ifnet *ifp, struct ifaddr *ifa)
 {
 	const struct sockaddr_dl *sdl;
-	IFNET_WLOCK();
+	mutex_enter(&ifnet_intr_lock);
 	ifnet_addrs[ifp->if_index] = ifa;
-	IFNET_UNLOCK();
+	mutex_exit(&ifnet_intr_lock);
 
 	IFAREF(ifa);
 	ifp->if_dl = ifa;
@@ -456,9 +454,9 @@ if_deactivate_sadl(struct ifnet *ifp)
 
 	ifp->if_sadl = NULL;
 
-	IFNET_WLOCK();
+	mutex_enter(&ifnet_intr_lock);
 	ifnet_addrs[ifp->if_index] = NULL;
-	IFNET_UNLOCK();
+	mutex_exit(&ifnet_intr_lock);
 
 	IFAFREE(ifa);
 	ifp->if_dl = NULL;
@@ -494,15 +492,15 @@ if_free_sadl(struct ifnet *ifp)
 
 	KASSERT(!cpu_intr_p());
 
-	IFNET_WLOCK();
+	mutex_enter(&ifnet_intr_lock);
 	ifa = ifnet_addrs[ifp->if_index];
 	if (ifa == NULL) {
 		KASSERT(ifp->if_sadl == NULL);
 		KASSERT(ifp->if_dl == NULL);
-		IFNET_UNLOCK();
+		mutex_exit(&ifnet_intr_lock);
 		return;
 	}
-	IFNET_UNLOCK();
+	mutex_exit(&ifnet_intr_lock);
 
 	KASSERT(ifp->if_sadl != NULL);
 	KASSERT(ifp->if_dl != NULL);
@@ -522,8 +520,6 @@ static void
 if_getindex(ifnet_t *ifp)
 {
 	bool hitlimit = false;
-
-	KASSERT(rw_lock_held(&ifnet_lock));
 
 	ifp->if_index_gen = index_gen++;
 
@@ -607,8 +603,6 @@ if_attach(ifnet_t *ifp)
 
 	TAILQ_INIT(&ifp->if_addrlist);
 
-	IFNET_WLOCK();
-
 	mutex_enter(&ifnet_intr_lock);
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
 	mutex_exit(&ifnet_intr_lock);
@@ -617,8 +611,6 @@ if_attach(ifnet_t *ifp)
 		panic("%s: ifioctl_attach() failed", __func__);
 
 	if_getindex(ifp);
-
-	IFNET_UNLOCK();
 
 	/*
 	 * Link level name is allocated later by a separate call to
@@ -669,15 +661,10 @@ if_attachdomain(void)
 	struct ifnet *ifp;
 	int s;
 
-	s = splnet();
-	/*
-	 * Don't IFNET_RLOCK, because it may be called inside if_attachdomain1.
-	 * Anyway we don't need IFNET_RLOCK because this function is called
-	 * only during bootstrap.
-	 */
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp)
 		if_attachdomain1(ifp);
-	splx(s);
+	IFNET_REXIT(s);
 }
 
 void
@@ -896,15 +883,10 @@ again:
 	/* Announce that the interface is gone. */
 	rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
 
-	IFNET_WLOCK();
-
-	ifindex2ifnet[ifp->if_index] = NULL;
-
 	mutex_enter(&ifnet_intr_lock);
+	ifindex2ifnet[ifp->if_index] = NULL;
 	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
 	mutex_exit(&ifnet_intr_lock);
-
-	IFNET_UNLOCK();
 
 	ifioctl_detach(ifp);
 
@@ -1172,8 +1154,9 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa = NULL;
+	int s;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1192,7 +1175,7 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 	}
 	ifa = NULL;
 found:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 
 	return ifa;
 }
@@ -1206,8 +1189,9 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1218,12 +1202,12 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 			    ifa->ifa_dstaddr == NULL)
 				continue;
 			if (equal(addr, ifa->ifa_dstaddr)) {
-				IFNET_UNLOCK();
+				IFNET_REXIT(s);
 				return ifa;
 			}
 		}
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return NULL;
 }
 
@@ -1240,8 +1224,9 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	struct ifaddr *ifa_maybe = 0;
 	u_int af = addr->sa_family;
 	const char *addr_data = addr->sa_data, *cplim;
+	int s;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	if (af == AF_LINK) {
 		sdl = satocsdl(addr);
 		if (sdl->sdl_index && sdl->sdl_index < if_indexlim &&
@@ -1301,7 +1286,7 @@ ifa_ifwithnet(const struct sockaddr *addr)
 		}
 	}
 out:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return ifa_maybe;
 }
 
@@ -1327,19 +1312,20 @@ ifa_ifwithaf(int af)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family == af) {
-				IFNET_UNLOCK();
+				IFNET_REXIT(s);
 				return ifa;
 			}
 		}
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return NULL;
 }
 
@@ -1542,17 +1528,16 @@ void
 if_slowtimo(void *arg)
 {
 	struct ifnet *ifp;
-	int s = splnet();
+	int s;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_timer == 0 || --ifp->if_timer)
 			continue;
 		if (ifp->if_watchdog != NULL)
 			(*ifp->if_watchdog)(ifp);
 	}
-	IFNET_UNLOCK();
-	splx(s);
+	IFNET_REXIT(s);
 	callout_reset(&if_slowtimo_ch, hz / IFNET_SLOWHZ, if_slowtimo, NULL);
 }
 
@@ -1602,6 +1587,7 @@ ifunit(const char *name)
 	const char *cp = name;
 	u_int unit = 0;
 	u_int i;
+	int s;
 
 	/*
 	 * If the entire name is a number, treat it as an ifindex.
@@ -1610,7 +1596,7 @@ ifunit(const char *name)
 		unit = unit * 10 + (*cp - '0');
 	}
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	/*
 	 * If the number took all of the name, then it's a valid ifindex.
 	 */
@@ -1631,7 +1617,7 @@ ifunit(const char *name)
 	}
 	ifp = NULL;
 out:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return ifp;
 }
 
@@ -2153,18 +2139,19 @@ ifconf(u_long cmd, void *data)
 	struct ifreq ifr, *ifrp;
 	int space, error = 0;
 	const int sz = (int)sizeof(struct ifreq);
+	int s;
 
 	if ((ifrp = ifc->ifc_req) == NULL)
 		space = 0;
 	else
 		space = ifc->ifc_len;
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
 		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
-			IFNET_UNLOCK();
+			IFNET_REXIT(s);
 			return ENAMETOOLONG;
 		}
 		if (IFADDR_EMPTY(ifp)) {
@@ -2177,7 +2164,7 @@ ifconf(u_long cmd, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0) {
-					IFNET_UNLOCK();
+					IFNET_REXIT(s);
 					return error;
 				}
 				ifrp++;
@@ -2198,14 +2185,14 @@ ifconf(u_long cmd, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0) {
-					IFNET_UNLOCK();
+					IFNET_REXIT(s);
 					return error;
 				}
 				ifrp++; space -= sz;
 			}
 		}
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 
 	if (ifrp != NULL) {
 		KASSERT(0 <= space && space <= ifc->ifc_len);

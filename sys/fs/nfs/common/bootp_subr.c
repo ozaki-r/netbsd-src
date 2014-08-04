@@ -400,9 +400,10 @@ bootpboot_p_iflist(void)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
 	printf("Interface list:\n");
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	for (ifp = TAILQ_FIRST(&V_ifnet);
 	     ifp != NULL;
 	     ifp = TAILQ_NEXT(ifp, if_link)) {
@@ -412,7 +413,7 @@ bootpboot_p_iflist(void)
 			if (ifa->ifa_addr->sa_family == AF_INET)
 				bootpboot_p_if(ifp, ifa);
 	}
-	IFNET_RUNLOCK();
+	IFNET_REXIT(s);
 }
 #endif /* defined(BOOTP_DEBUG) */
 
@@ -1553,6 +1554,7 @@ bootpc_init(void)
 	struct thread *td;
 	int timeout;
 	int delay;
+	int s;
 
 	timeout = BOOTP_IFACE_WAIT_TIMEOUT * hz;
 	delay = hz / 10;
@@ -1596,7 +1598,7 @@ bootpc_init(void)
 	 * attaches and wins the race, it won't be eligible for bootp.
 	 */
 	ifcnt = 0;
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
 		if ((ifp->if_flags &
 		     (IFF_LOOPBACK | IFF_POINTOPOINT | IFF_BROADCAST)) !=
@@ -1612,7 +1614,7 @@ bootpc_init(void)
 		}
 		ifcnt++;
 	}
-	IFNET_RUNLOCK();
+	IFNET_REXIT(s);
 	if (ifcnt == 0)
 		panic("%s: no eligible interfaces", __func__);
 	for (; ifcnt > 0; ifcnt--)
@@ -1621,7 +1623,7 @@ bootpc_init(void)
 
 retry:
 	ifctx = STAILQ_FIRST(&gctx->interfaces);
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
 		if (ifctx == NULL)
 			break;
@@ -1661,7 +1663,7 @@ retry:
 
 		ifctx = STAILQ_NEXT(ifctx, next);
 	}
-	IFNET_RUNLOCK();
+	IFNET_REXIT(s);
 	CURVNET_RESTORE();
 
 	if (STAILQ_EMPTY(&gctx->interfaces) ||

@@ -100,6 +100,9 @@ RB_GENERATE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
 void
 pfi_initialize(void)
 {
+#ifdef __NetBSD__
+	int s;
+#endif
 	if (pfi_all != NULL)	/* already initialized */
 		return;
 
@@ -119,12 +122,12 @@ pfi_initialize(void)
 
 #ifdef __NetBSD__
 	ifnet_t *ifp;
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		pfi_init_groups(ifp);
 		pfi_attach_ifnet(ifp);
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 
 	pfil_add_hook(pfil_ifnet_wrapper, NULL, PFIL_IFNET, if_pfil);
 	pfil_add_hook(pfil_ifaddr_wrapper, NULL, PFIL_IFADDR, if_pfil);
@@ -137,16 +140,17 @@ pfi_destroy(void)
 {
 	struct pfi_kif *p;
 	ifnet_t *ifp;
+	int s;
 
 	pfil_remove_hook(pfil_ifaddr_wrapper, NULL, PFIL_IFADDR, if_pfil);
 	pfil_remove_hook(pfil_ifnet_wrapper, NULL, PFIL_IFNET, if_pfil);
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		pfi_detach_ifnet(ifp);
 		pfi_destroy_groups(ifp);
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 
 	while ((p = RB_MIN(pfi_ifhead, &pfi_ifs))) {
 		RB_REMOVE(pfi_ifhead, &pfi_ifs, p);

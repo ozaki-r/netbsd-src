@@ -217,13 +217,14 @@ setroot(device_t bootdv, int bootpartition)
 	if (vops != NULL && strcmp(rootfstype, MOUNT_NFS) == 0 &&
 	    rootspec == NULL &&
 	    (bootdv == NULL || device_class(bootdv) != DV_IFNET)) {
-		IFNET_RLOCK();
+		int s;
+		IFNET_RENTER(s);
 		IFNET_FOREACH(ifp) {
 			if ((ifp->if_flags &
 			     (IFF_LOOPBACK|IFF_POINTOPOINT)) == 0)
 				break;
 		}
-		IFNET_UNLOCK();
+		IFNET_REXIT(s);
 
 		if (ifp == NULL) {
 			/*

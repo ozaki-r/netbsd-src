@@ -803,10 +803,11 @@ vmt_tclo_tick(void *xarg)
 	} else if (strcmp(sc->sc_rpc_buf, "Set_Option broadcastIP 1") == 0) {
 		struct ifnet *iface;
 		struct sockaddr_in *guest_ip;
+		int s;
 
 		/* find first available ipv4 address */
 		guest_ip = NULL;
-		IFNET_RLOCK();
+		IFNET_RENTER(s);
 		IFNET_FOREACH(iface) {
 			struct ifaddr *iface_addr;
 
@@ -825,7 +826,7 @@ vmt_tclo_tick(void *xarg)
 				break;
 			}
 		}
-		IFNET_UNLOCK();
+		IFNET_REXIT(s);
 
 		if (guest_ip != NULL) {
 			if (vm_rpc_send_rpci_tx(sc, "info-set guestinfo.ip %s",

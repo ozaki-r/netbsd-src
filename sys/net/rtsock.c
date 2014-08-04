@@ -1239,10 +1239,11 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 	struct ifaddr *ifa;
 	struct	rt_addrinfo info;
 	int	len, error = 0;
+	int s;
 
 	memset(&info, 0, sizeof(info));
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (w->w_arg && w->w_arg != ifp->if_index)
 			continue;
@@ -1330,7 +1331,7 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 		    info.rti_info[RTAX_BRD] = NULL;
 	}
 out:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 	return error;
 }
 

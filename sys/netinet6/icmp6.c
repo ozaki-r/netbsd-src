@@ -1631,6 +1631,7 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 	struct sockaddr_in6 *subj_ip6 = NULL; /* XXX pedant */
 	int addrs = 0, addrsofif, iffound = 0;
 	int niflags = ni6->ni_flags;
+	int s;
 
 	if ((niflags & NI_NODEADDR_FLAG_ALL) == 0) {
 		switch (ni6->ni_code) {
@@ -1648,7 +1649,7 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 		}
 	}
 
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		addrsofif = 0;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1701,13 +1702,13 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 		}
 		if (iffound) {
 			*ifpp = ifp;
-			IFNET_UNLOCK();
+			IFNET_REXIT(s);
 			return (addrsofif);
 		}
 
 		addrs += addrsofif;
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 
 	return (addrs);
 }

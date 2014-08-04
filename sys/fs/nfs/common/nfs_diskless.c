@@ -172,6 +172,7 @@ nfs_setup_diskless(void)
 	char *cp;
 	int cnt, fhlen, is_nfsv3;
 	uint32_t len;
+	int s;
 
 	if (nfs_diskless_valid != 0)
 		return;
@@ -217,7 +218,7 @@ nfs_setup_diskless(void)
 	}
 	ifa = NULL;
 	CURVNET_SET(TD_TO_VNET(curthread));
-	IFNET_RLOCK();
+	IFNET_RENTER(s);
 	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
 		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 			if (ifa->ifa_addr->sa_family == AF_LINK) {
@@ -227,14 +228,14 @@ nfs_setup_diskless(void)
 				    !bcmp(LLADDR(sdl),
 					  LLADDR(&ourdl),
 					  sdl->sdl_alen)) {
-				    IFNET_RUNLOCK();
+				    IFNET_REXIT(s);
 				    CURVNET_RESTORE();
 				    goto match_done;
 				}
 			}
 		}
 	}
-	IFNET_RUNLOCK();
+	IFNET_REXIT(s);
 	CURVNET_RESTORE();
 	printf("nfs_diskless: no interface\n");
 	return;	/* no matching interface */

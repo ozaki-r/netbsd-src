@@ -109,6 +109,7 @@ svr4_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval,
 		{
 			struct ifnet *ifp;
 			struct svr4_lifnum lifnum;
+			int s;
 
 			error = copyin(data, &lifnum, sizeof(lifnum));
 			if (error)
@@ -116,10 +117,10 @@ svr4_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval,
 
 			lifnum.lifn_count = 0;
 			/* XXX: We don't pay attention to family or flags */
-			IFNET_RLOCK();
+			IFNET_RENTER(s);
 			IFNET_FOREACH(ifp)
 				lifnum.lifn_count += svr4_count_ifnum(ifp);
-			IFNET_UNLOCK();
+			IFNET_REXIT(s);
 
 			DPRINTF(("SIOCGLIFNUM [family=%d,flags=%d,count=%d]\n",
 			    lifnum.lifn_family, lifnum.lifn_flags,
@@ -131,6 +132,7 @@ svr4_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval,
 		{
 			struct ifnet *ifp;
 			int ifnum = 0;
+			int s;
 
 			/*
 			 * This does not return the number of physical
@@ -144,10 +146,10 @@ svr4_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval,
 			 * entry per physical interface?
 			 */
 
-			IFNET_RLOCK();
+			IFNET_RENTER(s);
 			IFNET_FOREACH(ifp)
 				ifnum += svr4_count_ifnum(ifp);
-			IFNET_UNLOCK();
+			IFNET_REXIT(s);
 
 			DPRINTF(("SIOCGIFNUM %d\n", ifnum));
 			return copyout(&ifnum, data, sizeof(ifnum));
