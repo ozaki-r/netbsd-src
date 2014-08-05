@@ -45,6 +45,9 @@
 #include <sys/selinfo.h>		/* for struct selinfo */
 #include <net/if.h>			/* for IFNAMSIZ */
 #include <net/bpfjit.h>			/* for bpfjit_function_t */
+#include <sys/mutex.h>
+#include <sys/condvar.h>
+#include <sys/pserialize.h>
 
 /*
  * Descriptor associated with each open bpf file.
@@ -102,6 +105,10 @@ struct bpf_d {
 	int		bd_compat32;	/* 32-bit stream on LP64 system */
 #endif
 	bpfjit_func_t	bd_jitcode;	/* compiled filter program */
+	kmutex_t	*bd_lock;	/* for the entry and the list */
+	kcondvar_t	bd_cv;		/* to wait until users're gone */
+	int		bd_refs;	/* to prevent the entry from being freed */
+	bool		bd_waiting;	/* true if being freed */
 };
 
 
@@ -139,10 +146,11 @@ struct bpf_if {
 	u_int bif_dlt;			/* link layer type */
 	u_int bif_hdrlen;		/* length of header (with padding) */
 	struct ifnet *bif_ifp;		/* corresponding interface */
+	kmutex_t *bif_lock;		/* to protect the entry */
 };
 
-#ifdef _KERNEL
-int	 bpf_setf(struct bpf_d *, struct bpf_program *);
-#endif
+/*
+ * Lock order: bpf_if#bif_lock, bpf_d#bd_lock
+ */
 
 #endif /* !_NET_BPFDESC_H_ */

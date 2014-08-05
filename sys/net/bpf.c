@@ -132,6 +132,8 @@ static kmutex_t bpf_mtx;
  */
 struct bpf_if	*bpf_iflist;
 LIST_HEAD(, bpf_d) bpf_list;
+static kmutex_t bpf_iflist_mtx __cacheline_aligned;
+static pserialize_t bpf_iflist_psz;
 
 static int	bpf_allocbufs(struct bpf_d *);
 static void	bpf_deliver(struct bpf_if *,
@@ -145,6 +147,7 @@ static int	bpf_movein(struct uio *, int, uint64_t,
 static void	bpf_attachd(struct bpf_d *, struct bpf_if *);
 static void	bpf_detachd(struct bpf_d *);
 static int	bpf_setif(struct bpf_d *, struct ifreq *);
+static int	bpf_setf(struct bpf_d *, struct bpf_program *);
 static void	bpf_timed_out(void *);
 static inline void
 		bpf_wakeup(struct bpf_d *);
@@ -154,6 +157,7 @@ static void	catchpacket(struct bpf_d *, u_char *, u_int, u_int,
 static void	reset_d(struct bpf_d *);
 static int	bpf_getdltlist(struct bpf_d *, struct bpf_dltlist *);
 static int	bpf_setdlt(struct bpf_d *, u_int);
+
 
 static int	bpf_read(struct file *, off_t *, struct uio *, kauth_cred_t,
     int);
@@ -335,21 +339,24 @@ bad:
 
 /*
  * Attach file to the bpf interface, i.e. make d listen on bp.
- * Must be called at splnet.
  */
 static void
 bpf_attachd(struct bpf_d *d, struct bpf_if *bp)
 {
+	KASSERT(mutex_owned(d->bd_lock));
 	/*
 	 * Point d at bp, and add d to the interface's list of listeners.
 	 * Finally, point the driver's bpf cookie at the interface so
 	 * it will divert packets to bpf.
 	 */
+	mutex_enter(bp->bif_lock);
 	d->bd_bif = bp;
 	d->bd_next = bp->bif_dlist;
 	bp->bif_dlist = d;
 
+	/* Something like ifp->if_bpf = bp */
 	*bp->bif_driverp = bp;
+	mutex_exit(bp->bif_lock);
 }
 
 /*
@@ -361,6 +368,8 @@ bpf_detachd(struct bpf_d *d)
 	struct bpf_d **p;
 	struct bpf_if *bp;
 
+	KASSERT(mutex_owned(d->bd_lock));
+
 	bp = d->bd_bif;
 	/*
 	 * Check if this descriptor had requested promiscuous mode.
@@ -368,6 +377,7 @@ bpf_detachd(struct bpf_d *d)
 	 */
 	if (d->bd_promisc) {
 		int error __diagused;
+		int s;
 
 		d->bd_promisc = 0;
 		/*
@@ -377,13 +387,23 @@ bpf_detachd(struct bpf_d *d)
 		 * the interface was configured down, so only panic
 		 * if we don't get an unexpected error.
 		 */
+		mutex_exit(d->bd_lock);
+		KERNEL_LOCK(1, NULL);
+		s = splnet();
   		error = ifpromisc(bp->bif_ifp, 0);
+		splx(s);
+		KERNEL_UNLOCK_ONE(NULL);
 #ifdef DIAGNOSTIC
 		if (error)
 			printf("%s: ifpromisc failed: %d", __func__, error);
 #endif
+	} else {
+		/* Unlock to avoid deadlock */
+		mutex_exit(d->bd_lock);
 	}
+
 	/* Remove d from the interface's descriptor list. */
+	mutex_enter(bp->bif_lock);
 	p = &bp->bif_dlist;
 	while (*p != d) {
 		p = &(*p)->bd_next;
@@ -393,10 +413,14 @@ bpf_detachd(struct bpf_d *d)
 	*p = (*p)->bd_next;
 	if (bp->bif_dlist == NULL)
 		/*
+		 * This is something like ifp->if_bpf = NULL.
 		 * Let the driver know that there are no more listeners.
 		 */
 		*d->bd_bif->bif_driverp = NULL;
 	d->bd_bif = NULL;
+	mutex_exit(bp->bif_lock);
+
+	mutex_enter(d->bd_lock);
 }
 
 static int
@@ -404,6 +428,8 @@ doinit(void)
 {
 
 	mutex_init(&bpf_mtx, MUTEX_DEFAULT, IPL_NONE);
+	mutex_init(&bpf_iflist_mtx, MUTEX_DEFAULT, IPL_NONE);
+	bpf_iflist_psz = pserialize_create();
 
 	LIST_INIT(&bpf_list);
 
@@ -454,8 +480,13 @@ bpfopen(dev_t dev, int flag, int mode, struct lwp *l)
 	d->bd_atime = d->bd_mtime = d->bd_btime;
 	callout_init(&d->bd_callout, 0);
 	selinit(&d->bd_sel);
-	d->bd_sih = softint_establish(SOFTINT_CLOCK, bpf_softintr, d);
+	d->bd_sih = softint_establish(SOFTINT_CLOCK | SOFTINT_MPSAFE,
+	    bpf_softintr, d);
 	d->bd_jitcode = NULL;
+	d->bd_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NET);
+	cv_init(&d->bd_cv, "bpf_cv");
+	d->bd_refs = 0;
+	d->bd_waiting = false;
 
 	mutex_enter(&bpf_mtx);
 	LIST_INSERT_HEAD(&bpf_list, d, bd_list);
@@ -475,31 +506,47 @@ bpf_close(struct file *fp)
 	struct bpf_d *d = fp->f_bpf;
 	int s;
 
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
+
+	d->bd_waiting = true;
+	while (d->bd_refs > 0) {
+		aprint_debug("%s: cv_wait on bpf_d\n", __func__);
+		cv_wait(&d->bd_cv, d->bd_lock);
+	}
 
 	/*
 	 * Refresh the PID associated with this bpf file.
 	 */
 	d->bd_pid = curproc->p_pid;
 
-	s = splnet();
 	if (d->bd_state == BPF_WAITING)
 		callout_stop(&d->bd_callout);
 	d->bd_state = BPF_IDLE;
-	if (d->bd_bif)
+	if (d->bd_bif) {
 		bpf_detachd(d);
-	splx(s);
+		/* Check again because bd_lock is unlocked in bpf_detachd */
+		while (d->bd_refs > 0) {
+			aprint_debug("%s: cv_wait on bpf_d\n", __func__);
+			cv_wait(&d->bd_cv, d->bd_lock);
+		}
+	}
 	bpf_freed(d);
+
+	mutex_exit(d->bd_lock);
+
 	mutex_enter(&bpf_mtx);
 	LIST_REMOVE(d, bd_list);
 	mutex_exit(&bpf_mtx);
+
 	callout_destroy(&d->bd_callout);
 	seldestroy(&d->bd_sel);
 	softint_disestablish(d->bd_sih);
+
+	mutex_obj_free(d->bd_lock);
+	cv_destroy(&d->bd_cv);
+
 	free(d, M_DEVBUF);
 	fp->f_bpf = NULL;
-
-	KERNEL_UNLOCK_ONE(NULL);
 
 	return (0);
 }
@@ -525,7 +572,6 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 	struct bpf_d *d = fp->f_bpf;
 	int timed_out;
 	int error;
-	int s;
 
 	getnanotime(&d->bd_atime);
 	/*
@@ -535,8 +581,9 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 	if (uio->uio_resid != d->bd_bufsize)
 		return (EINVAL);
 
-	KERNEL_LOCK(1, NULL);
-	s = splnet();
+	mutex_enter(d->bd_lock);
+	d->bd_refs++;
+
 	if (d->bd_state == BPF_WAITING)
 		callout_stop(&d->bd_callout);
 	timed_out = (d->bd_state == BPF_TIMED_OUT);
@@ -549,9 +596,8 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 	while (d->bd_hbuf == NULL) {
 		if (fp->f_flag & FNONBLOCK) {
 			if (d->bd_slen == 0) {
-				splx(s);
-				KERNEL_UNLOCK_ONE(NULL);
-				return (EWOULDBLOCK);
+				error = EWOULDBLOCK;
+				goto done;
 			}
 			ROTATE_BUFFERS(d);
 			break;
@@ -566,13 +612,12 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 			ROTATE_BUFFERS(d);
 			break;
 		}
+		mutex_exit(d->bd_lock);
 		error = tsleep(d, PRINET|PCATCH, "bpf",
 				d->bd_rtout);
-		if (error == EINTR || error == ERESTART) {
-			splx(s);
-			KERNEL_UNLOCK_ONE(NULL);
-			return (error);
-		}
+		mutex_enter(d->bd_lock);
+		if (error == EINTR || error == ERESTART)
+			goto done;
 		if (error == EWOULDBLOCK) {
 			/*
 			 * On a timeout, return what's in the buffer,
@@ -588,9 +633,8 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 				break;
 
 			if (d->bd_slen == 0) {
-				splx(s);
-				KERNEL_UNLOCK_ONE(NULL);
-				return (0);
+				error = 0;
+				goto done;
 			}
 			ROTATE_BUFFERS(d);
 			break;
@@ -601,7 +645,7 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 	/*
 	 * At this point, we know we have something in the hold slot.
 	 */
-	splx(s);
+	mutex_exit(d->bd_lock);
 
 	/*
 	 * Move data from hold buffer into user space.
@@ -610,14 +654,17 @@ bpf_read(struct file *fp, off_t *offp, struct uio *uio,
 	 */
 	error = uiomove(d->bd_hbuf, d->bd_hlen, uio);
 
-	s = splnet();
+	mutex_enter(d->bd_lock);
 	d->bd_fbuf = d->bd_hbuf;
 	d->bd_hbuf = NULL;
 	d->bd_hlen = 0;
 done:
-	splx(s);
-	KERNEL_UNLOCK_ONE(NULL);
-	return (error);
+	d->bd_refs--;
+	if (d->bd_waiting) {
+		cv_broadcast(&d->bd_cv);
+	}
+	mutex_exit(d->bd_lock);
+	return error;
 }
 
 
@@ -647,15 +694,14 @@ static void
 bpf_timed_out(void *arg)
 {
 	struct bpf_d *d = arg;
-	int s;
 
-	s = splnet();
+	mutex_enter(d->bd_lock);
 	if (d->bd_state == BPF_WAITING) {
 		d->bd_state = BPF_TIMED_OUT;
 		if (d->bd_slen != 0)
 			bpf_wakeup(d);
 	}
-	splx(s);
+	mutex_exit(d->bd_lock);
 }
 
 
@@ -670,33 +716,38 @@ bpf_write(struct file *fp, off_t *offp, struct uio *uio,
 	static struct sockaddr_storage dst;
 
 	m = NULL;	/* XXX gcc */
+	mc = NULL;	/* XXX gcc */
 
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
 
 	if (d->bd_bif == NULL) {
-		KERNEL_UNLOCK_ONE(NULL);
-		return (ENXIO);
+		mutex_exit(d->bd_lock);
+		return ENXIO;
 	}
 	getnanotime(&d->bd_mtime);
 
 	ifp = d->bd_bif->bif_ifp;
 
 	if (uio->uio_resid == 0) {
-		KERNEL_UNLOCK_ONE(NULL);
-		return (0);
+		mutex_exit(d->bd_lock);
+		return 0;
 	}
+
+	d->bd_refs++;
+	mutex_exit(d->bd_lock);
 
 	error = bpf_movein(uio, (int)d->bd_bif->bif_dlt, ifp->if_mtu, &m,
 		(struct sockaddr *) &dst);
-	if (error) {
-		KERNEL_UNLOCK_ONE(NULL);
-		return (error);
-	}
+
+	mutex_enter(d->bd_lock);
+
+	if (error)
+		goto unlock;
 
 	if (m->m_pkthdr.len > ifp->if_mtu) {
-		KERNEL_UNLOCK_ONE(NULL);
 		m_freem(m);
-		return (EMSGSIZE);
+		error = EMSGSIZE;
+		goto unlock;
 	}
 
 	if (d->bd_hdrcmplt)
@@ -712,6 +763,18 @@ bpf_write(struct file *fp, off_t *offp, struct uio *uio,
 	} else  
 		mc = NULL;
 
+	error = 0;
+unlock:
+	d->bd_refs--;
+	if (d->bd_waiting) {
+		cv_broadcast(&d->bd_cv);
+	}
+	mutex_exit(d->bd_lock);
+
+	if (error)
+		return error;
+
+	KERNEL_LOCK(1, NULL);
 	s = splsoftnet();
 	error = (*ifp->if_output)(ifp, m, (struct sockaddr *) &dst, NULL);
 
@@ -735,6 +798,8 @@ bpf_write(struct file *fp, off_t *offp, struct uio *uio,
 static void
 reset_d(struct bpf_d *d)
 {
+	KASSERT(mutex_owned(d->bd_lock));
+
 	if (d->bd_hbuf) {
 		/* Free the hold buffer. */
 		d->bd_fbuf = d->bd_hbuf;
@@ -778,7 +843,9 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 	/*
 	 * Refresh the PID associated with this bpf file.
 	 */
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
+	d->bd_refs++;
+
 	d->bd_pid = curproc->p_pid;
 #ifdef _LP64
 	if (curproc->p_flag & PK_32)
@@ -787,11 +854,9 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 		d->bd_compat32 = 0;
 #endif
 
-	s = splnet();
 	if (d->bd_state == BPF_WAITING)
 		callout_stop(&d->bd_callout);
 	d->bd_state = BPF_IDLE;
-	splx(s);
 
 	switch (cmd) {
 
@@ -806,11 +871,9 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 		{
 			int n;
 
-			s = splnet();
 			n = d->bd_slen;
 			if (d->bd_hbuf)
 				n += d->bd_hlen;
-			splx(s);
 
 			*(int *)addr = n;
 			break;
@@ -851,15 +914,14 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 	 * Flush read packet buffer.
 	 */
 	case BIOCFLUSH:
-		s = splnet();
 		reset_d(d);
-		splx(s);
 		break;
 
 	/*
 	 * Put interface into promiscuous mode.
 	 */
-	case BIOCPROMISC:
+	case BIOCPROMISC: {
+		int s;
 		if (d->bd_bif == NULL) {
 			/*
 			 * No interface attached yet.
@@ -867,14 +929,19 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 			error = EINVAL;
 			break;
 		}
-		s = splnet();
 		if (d->bd_promisc == 0) {
+			mutex_exit(d->bd_lock);
+			KERNEL_LOCK(1, NULL);
+			s = splnet();
 			error = ifpromisc(d->bd_bif->bif_ifp, 1);
+			splx(s);
+			KERNEL_UNLOCK_ONE(NULL);
+			mutex_enter(d->bd_lock);
 			if (error == 0)
 				d->bd_promisc = 1;
 		}
-		splx(s);
 		break;
+	}
 
 	/*
 	 * Get device parameters.
@@ -1080,21 +1147,27 @@ bpf_ioctl(struct file *fp, u_long cmd, void *addr)
 		error = fgetown(d->bd_pgid, cmd, addr);
 		break;
 	}
-	KERNEL_UNLOCK_ONE(NULL);
-	return (error);
+
+	d->bd_refs--;
+	if (d->bd_waiting) {
+		cv_broadcast(&d->bd_cv);
+	}
+	mutex_exit(d->bd_lock);
+	return error;
 }
 
 /*
  * Set d's packet filter program to fp.  If this file already has a filter,
  * free it and replace it.  Returns EINVAL for bogus requests.
  */
-int
+static int
 bpf_setf(struct bpf_d *d, struct bpf_program *fp)
 {
 	struct bpf_insn *fcode, *old;
 	bpfjit_func_t jcode, oldj;
 	size_t flen, size;
-	int s;
+
+	KASSERT(mutex_owned(d->bd_lock));
 
 	jcode = NULL;
 	flen = fp->bf_len;
@@ -1109,7 +1182,7 @@ bpf_setf(struct bpf_d *d, struct bpf_program *fp)
 		 * userspace and validate it.
 		 */
 		size = flen * sizeof(*fp->bf_insns);
-		fcode = malloc(size, M_DEVBUF, M_WAITOK);
+		fcode = malloc(size, M_DEVBUF, M_NOWAIT);
 		if (copyin(fp->bf_insns, fcode, size) != 0 ||
 		    !bpf_validate(fcode, (int)flen)) {
 			free(fcode, M_DEVBUF);
@@ -1122,13 +1195,11 @@ bpf_setf(struct bpf_d *d, struct bpf_program *fp)
 		fcode = NULL;
 	}
 
-	s = splnet();
 	old = d->bd_filter;
 	d->bd_filter = fcode;
 	oldj = d->bd_jitcode;
 	d->bd_jitcode = jcode;
 	reset_d(d);
-	splx(s);
 
 	if (old) {
 		free(old, M_DEVBUF);
@@ -1151,6 +1222,8 @@ bpf_setif(struct bpf_d *d, struct ifreq *ifr)
 	struct bpf_if *bp;
 	char *cp;
 	int unit_seen, i, s, error;
+
+	KASSERT(mutex_owned(d->bd_lock));
 
 	/*
 	 * Make sure the provided name has a unit number, and default
@@ -1178,6 +1251,7 @@ bpf_setif(struct bpf_d *d, struct ifreq *ifr)
 	/*
 	 * Look through attached interfaces for the named one.
 	 */
+	s = pserialize_read_enter();
 	for (bp = bpf_iflist; bp != NULL; bp = bp->bif_next) {
 		struct ifnet *ifp = bp->bif_ifp;
 
@@ -1196,24 +1270,27 @@ bpf_setif(struct bpf_d *d, struct ifreq *ifr)
 		if (d->bd_sbuf == NULL) {
 			error = bpf_allocbufs(d);
 			if (error != 0)
-				return (error);
+				goto out;
 		}
-		s = splnet();
 		if (bp != d->bd_bif) {
 			if (d->bd_bif)
 				/*
 				 * Detach if attached to something else.
 				 */
+				/* XXX may block, which is against pserialize */
 				bpf_detachd(d);
 
 			bpf_attachd(d, bp);
 		}
 		reset_d(d);
-		splx(s);
-		return (0);
+		error = 0;
+		goto out;
 	}
 	/* Not found. */
-	return (ENXIO);
+	error = ENXIO;
+out:
+	pserialize_read_exit(s);
+	return error;
 }
 
 /*
@@ -1231,7 +1308,7 @@ bpf_stat(struct file *fp, struct stat *st)
 	struct bpf_d *d = fp->f_bpf;
 
 	(void)memset(st, 0, sizeof(*st));
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
 	st->st_dev = makedev(cdevsw_lookup_major(&bpf_cdevsw), d->bd_pid);
 	st->st_atimespec = d->bd_atime;
 	st->st_mtimespec = d->bd_mtime;
@@ -1239,7 +1316,7 @@ bpf_stat(struct file *fp, struct stat *st)
 	st->st_uid = kauth_cred_geteuid(fp->f_cred);
 	st->st_gid = kauth_cred_getegid(fp->f_cred);
 	st->st_mode = S_IFCHR;
-	KERNEL_UNLOCK_ONE(NULL);
+	mutex_exit(d->bd_lock);
 	return 0;
 }
 
@@ -1255,13 +1332,12 @@ static int
 bpf_poll(struct file *fp, int events)
 {
 	struct bpf_d *d = fp->f_bpf;
-	int s = splnet();
 	int revents;
 
+	mutex_enter(d->bd_lock);
 	/*
 	 * Refresh the PID associated with this bpf file.
 	 */
-	KERNEL_LOCK(1, NULL);
 	d->bd_pid = curproc->p_pid;
 
 	revents = events & (POLLOUT | POLLWRNORM);
@@ -1284,22 +1360,18 @@ bpf_poll(struct file *fp, int events)
 		}
 	}
 
-	KERNEL_UNLOCK_ONE(NULL);
-	splx(s);
-	return (revents);
+	mutex_exit(d->bd_lock);
+	return revents;
 }
 
 static void
 filt_bpfrdetach(struct knote *kn)
 {
 	struct bpf_d *d = kn->kn_hook;
-	int s;
 
-	KERNEL_LOCK(1, NULL);
-	s = splnet();
+	mutex_enter(d->bd_lock);
 	SLIST_REMOVE(&d->bd_sel.sel_klist, kn, knote, kn_selnext);
-	splx(s);
-	KERNEL_UNLOCK_ONE(NULL);
+	mutex_exit(d->bd_lock);
 }
 
 static int
@@ -1308,12 +1380,12 @@ filt_bpfread(struct knote *kn, long hint)
 	struct bpf_d *d = kn->kn_hook;
 	int rv;
 
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
 	kn->kn_data = d->bd_hlen;
 	if (d->bd_immediate)
 		kn->kn_data += d->bd_slen;
 	rv = (kn->kn_data > 0);
-	KERNEL_UNLOCK_ONE(NULL);
+	mutex_exit(d->bd_lock);
 	return rv;
 }
 
@@ -1325,9 +1397,8 @@ bpf_kqfilter(struct file *fp, struct knote *kn)
 {
 	struct bpf_d *d = fp->f_bpf;
 	struct klist *klist;
-	int s;
 
-	KERNEL_LOCK(1, NULL);
+	mutex_enter(d->bd_lock);
 
 	switch (kn->kn_filter) {
 	case EVFILT_READ:
@@ -1336,18 +1407,16 @@ bpf_kqfilter(struct file *fp, struct knote *kn)
 		break;
 
 	default:
-		KERNEL_UNLOCK_ONE(NULL);
-		return (EINVAL);
+		mutex_exit(d->bd_lock);
+		return EINVAL;
 	}
 
 	kn->kn_hook = d;
 
-	s = splnet();
 	SLIST_INSERT_HEAD(klist, kn, kn_selnext);
-	splx(s);
-	KERNEL_UNLOCK_ONE(NULL);
 
-	return (0);
+	mutex_exit(d->bd_lock);
+	return 0;
 }
 
 /*
@@ -1405,12 +1474,15 @@ bpf_deliver(struct bpf_if *bp, void *(*cpfn)(void *, const void *, size_t),
 	 * The only problem that could arise here is that if two different
 	 * interfaces shared any data.  This is not the case.
 	 */
+	mutex_enter(bp->bif_lock);
 	for (struct bpf_d *d = bp->bif_dlist; d != NULL; d = d->bd_next) {
 		u_int slen;
 
-		if (!d->bd_seesent && !rcv) {
-			continue;
-		}
+		mutex_enter(d->bd_lock);
+
+		if (!d->bd_seesent && !rcv)
+			goto next;
+
 		d->bd_rcount++;
 		bpf_gstats.bs_recv++;
 
@@ -1419,15 +1491,18 @@ bpf_deliver(struct bpf_if *bp, void *(*cpfn)(void *, const void *, size_t),
 		else
 			slen = bpf_filter_ext(bc, d->bd_filter, &args);
 
-		if (!slen) {
-			continue;
-		}
+		if (!slen)
+			goto next;
 		if (!gottime) {
 			gottime = true;
 			nanotime(&ts);
 		}
 		catchpacket(d, pkt, pktlen, slen, cpfn, &ts);
+
+	next:
+		mutex_exit(d->bd_lock);
 	}
+	mutex_exit(bp->bif_lock);
 }
 
 /*
@@ -1534,7 +1609,6 @@ _bpf_mtap_af(struct bpf_if *bp, uint32_t af, struct mbuf *m)
 static void
 _bpf_mtap_sl_in(struct bpf_if *bp, u_char *chdr, struct mbuf **m)
 {
-	int s;
 	u_char *hp;
 
 	M_PREPEND(*m, SLIP_HDRLEN, M_DONTWAIT);
@@ -1545,9 +1619,7 @@ _bpf_mtap_sl_in(struct bpf_if *bp, u_char *chdr, struct mbuf **m)
 	hp[SLX_DIR] = SLIPDIR_IN;
 	(void)memcpy(&hp[SLX_CHDR], chdr, CHDR_LEN);
 
-	s = splnet();
 	_bpf_mtap(bp, *m);
-	splx(s);
 
 	m_adj(*m, SLIP_HDRLEN);
 }
@@ -1562,7 +1634,6 @@ _bpf_mtap_sl_out(struct bpf_if *bp, u_char *chdr, struct mbuf *m)
 {
 	struct mbuf m0;
 	u_char *hp;
-	int s;
 
 	m0.m_flags = 0;
 	m0.m_next = m;
@@ -1574,9 +1645,7 @@ _bpf_mtap_sl_out(struct bpf_if *bp, u_char *chdr, struct mbuf *m)
 	hp[SLX_DIR] = SLIPDIR_OUT;
 	(void)memcpy(&hp[SLX_CHDR], chdr, CHDR_LEN);
 
-	s = splnet();
 	_bpf_mtap(bp, &m0);
-	splx(s);
 	m_freem(m);
 }
 
@@ -1614,6 +1683,8 @@ catchpacket(struct bpf_d *d, u_char *pkt, u_int pktlen, u_int snaplen,
 	int totlen, curlen, caplen;
 	int hdrlen = bpf_hdrlen(d);
 	int do_wakeup = 0;
+
+	KASSERT(mutex_owned(d->bd_lock));
 
 	++d->bd_ccount;
 	++bpf_gstats.bs_capt;
@@ -1718,10 +1789,10 @@ static int
 bpf_allocbufs(struct bpf_d *d)
 {
 
-	d->bd_fbuf = malloc(d->bd_bufsize, M_DEVBUF, M_WAITOK | M_CANFAIL);
+	d->bd_fbuf = malloc(d->bd_bufsize, M_DEVBUF, M_NOWAIT | M_CANFAIL);
 	if (!d->bd_fbuf)
 		return (ENOBUFS);
-	d->bd_sbuf = malloc(d->bd_bufsize, M_DEVBUF, M_WAITOK | M_CANFAIL);
+	d->bd_sbuf = malloc(d->bd_bufsize, M_DEVBUF, M_NOWAIT | M_CANFAIL);
 	if (!d->bd_sbuf) {
 		free(d->bd_fbuf, M_DEVBUF);
 		return (ENOBUFS);
@@ -1775,9 +1846,12 @@ _bpfattach(struct ifnet *ifp, u_int dlt, u_int hdrlen, struct bpf_if **driverp)
 	bp->bif_driverp = driverp;
 	bp->bif_ifp = ifp;
 	bp->bif_dlt = dlt;
+	bp->bif_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NET);
 
+	mutex_enter(&bpf_iflist_mtx);
 	bp->bif_next = bpf_iflist;
 	bpf_iflist = bp;
+	mutex_exit(&bpf_iflist_mtx);
 
 	*bp->bif_driverp = NULL;
 
@@ -1795,7 +1869,6 @@ _bpfdetach(struct ifnet *ifp)
 {
 	struct bpf_if *bp, **pbp;
 	struct bpf_d *d;
-	int s;
 
 	/* Nuke the vnodes for any open instances */
 	LIST_FOREACH(d, &bpf_list, bd_list) {
@@ -1804,22 +1877,25 @@ _bpfdetach(struct ifnet *ifp)
 			 * Detach the descriptor from an interface now.
 			 * It will be free'ed later by close routine.
 			 */
-			s = splnet();
+			mutex_enter(d->bd_lock);
 			d->bd_promisc = 0;	/* we can't touch device. */
 			bpf_detachd(d);
-			splx(s);
+			mutex_exit(d->bd_lock);
 		}
 	}
 
+	mutex_enter(&bpf_iflist_mtx);
   again:
 	for (bp = bpf_iflist, pbp = &bpf_iflist;
 	     bp != NULL; pbp = &bp->bif_next, bp = bp->bif_next) {
 		if (bp->bif_ifp == ifp) {
 			*pbp = bp->bif_next;
+			pserialize_perform(bpf_iflist_psz);
 			free(bp, M_DEVBUF);
 			goto again;
 		}
 	}
+	mutex_exit(&bpf_iflist_mtx);
 }
 
 /*
@@ -1829,11 +1905,14 @@ static void
 _bpf_change_type(struct ifnet *ifp, u_int dlt, u_int hdrlen)
 {
 	struct bpf_if *bp;
+	int s;
 
+	s = pserialize_read_enter();
 	for (bp = bpf_iflist; bp != NULL; bp = bp->bif_next) {
 		if (bp->bif_driverp == &ifp->if_bpf)
 			break;
 	}
+	pserialize_read_exit(s);
 	if (bp == NULL)
 		panic("bpf_change_type");
 
@@ -1851,21 +1930,31 @@ bpf_getdltlist(struct bpf_d *d, struct bpf_dltlist *bfl)
 	int n, error;
 	struct ifnet *ifp;
 	struct bpf_if *bp;
+	int s;
+
+	KASSERT(mutex_owned(d->bd_lock));
+	KASSERT(d->bd_refs > 0);
 
 	ifp = d->bd_bif->bif_ifp;
 	n = 0;
 	error = 0;
+
+	s = pserialize_read_enter();
 	for (bp = bpf_iflist; bp != NULL; bp = bp->bif_next) {
 		if (bp->bif_ifp != ifp)
 			continue;
 		if (bfl->bfl_list != NULL) {
 			if (n >= bfl->bfl_len)
 				return ENOMEM;
+			mutex_exit(d->bd_lock);
+			/* XXX may block, which is against pserialize */
 			error = copyout(&bp->bif_dlt,
 			    bfl->bfl_list + n, sizeof(u_int));
+			mutex_enter(d->bd_lock);
 		}
 		n++;
 	}
+	pserialize_read_exit(s);
 	bfl->bfl_len = n;
 	return error;
 }
@@ -1876,33 +1965,43 @@ bpf_getdltlist(struct bpf_d *d, struct bpf_dltlist *bfl)
 static int
 bpf_setdlt(struct bpf_d *d, u_int dlt)
 {
-	int s, error, opromisc;
+	int error, opromisc;
 	struct ifnet *ifp;
 	struct bpf_if *bp;
+	int s;
+
+	KASSERT(mutex_owned(d->bd_lock));
+	KASSERT(d->bd_refs > 0);
 
 	if (d->bd_bif->bif_dlt == dlt)
 		return 0;
 	ifp = d->bd_bif->bif_ifp;
+	s = pserialize_read_enter();
 	for (bp = bpf_iflist; bp != NULL; bp = bp->bif_next) {
 		if (bp->bif_ifp == ifp && bp->bif_dlt == dlt)
 			break;
 	}
+	pserialize_read_exit(s);
 	if (bp == NULL)
 		return EINVAL;
-	s = splnet();
 	opromisc = d->bd_promisc;
 	bpf_detachd(d);
 	bpf_attachd(d, bp);
 	reset_d(d);
 	if (opromisc) {
+		mutex_exit(d->bd_lock);
+		KERNEL_LOCK(1, NULL);
+		s = splnet();
 		error = ifpromisc(bp->bif_ifp, 1);
+		splx(s);
+		KERNEL_UNLOCK_ONE(NULL);
+		mutex_enter(d->bd_lock);
 		if (error)
 			printf("%s: bpf_setdlt: ifpromisc failed (%d)\n",
 			    bp->bif_ifp->if_xname, error);
 		else
 			d->bd_promisc = 1;
 	}
-	splx(s);
 	return 0;
 }
 
