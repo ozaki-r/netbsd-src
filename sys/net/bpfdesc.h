@@ -47,7 +47,12 @@
 #include <net/bpfjit.h>			/* for bpfjit_function_t */
 #include <sys/mutex.h>
 #include <sys/condvar.h>
-#include <sys/pserialize.h>
+
+struct bpf_refcount {
+	kcondvar_t	br_cv;
+	int		br_refs;
+	bool		br_waiting;
+};
 
 /*
  * Descriptor associated with each open bpf file.
@@ -96,7 +101,6 @@ struct bpf_d {
 #endif
 	callout_t	bd_callout;	/* for BPF timeouts with select */
 	pid_t		bd_pid;		/* corresponding PID */
-	LIST_ENTRY(bpf_d) bd_list;	/* list of all BPF's */
 	void		*bd_sih;	/* soft interrupt handle */
 	struct timespec bd_atime;	/* access time */
 	struct timespec bd_mtime;	/* modification time */
@@ -106,9 +110,11 @@ struct bpf_d {
 #endif
 	bpfjit_func_t	bd_jitcode;	/* compiled filter program */
 	kmutex_t	*bd_lock;	/* for the entry and the list */
-	kcondvar_t	bd_cv;		/* to wait until users're gone */
-	int		bd_refs;	/* to prevent the entry from being freed */
-	bool		bd_waiting;	/* true if being freed */
+	struct bpf_refcount bd_refcount;
+	struct bpf_refcount bd_hbuf_refcount;
+	bool		bd_dying;
+	kcondvar_t	bd_read_cv;
+	bool		bd_read_waiting;
 };
 
 
@@ -148,9 +154,5 @@ struct bpf_if {
 	struct ifnet *bif_ifp;		/* corresponding interface */
 	kmutex_t *bif_lock;		/* to protect the entry */
 };
-
-/*
- * Lock order: bpf_if#bif_lock, bpf_d#bd_lock
- */
 
 #endif /* !_NET_BPFDESC_H_ */
