@@ -784,29 +784,41 @@ bridge_ioctl_add(struct bridge_softc *sc, void *arg)
 	struct ifnet *ifs;
 	int error = 0;
 
-	ifs = ifunit(req->ifbr_ifsname);
+	ifs = ifget(req->ifbr_ifsname);
 	if (ifs == NULL)
-		return (ENOENT);
+		return ENOENT;
 
-	if (sc->sc_if.if_mtu != ifs->if_mtu)
-		return (EINVAL);
+	if (sc->sc_if.if_mtu != ifs->if_mtu) {
+		error = EINVAL;
+		goto out;
+	}
 
-	if (ifs->if_bridge == sc)
-		return (EEXIST);
+	if (ifs->if_bridge == sc) {
+		error = EEXIST;
+		goto out;
+	}
 
-	if (ifs->if_bridge != NULL)
-		return (EBUSY);
+	if (ifs->if_bridge != NULL) {
+		error = EBUSY;
+		goto out;
+	}
 
-	if (ifs->if_input != ether_input)
-		return EINVAL;
+	if (ifs->if_input != ether_input) {
+		error = EINVAL;
+		goto out;
+	}
 
 	/* FIXME: doesn't work with non-IFF_SIMPLEX interfaces */
-	if ((ifs->if_flags & IFF_SIMPLEX) == 0)
-		return EINVAL;
+	if ((ifs->if_flags & IFF_SIMPLEX) == 0) {
+		error = EINVAL;
+		goto out;
+	}
 
 	bif = malloc(sizeof(*bif), M_DEVBUF, M_NOWAIT);
-	if (bif == NULL)
-		return (ENOMEM);
+	if (bif == NULL) {
+		error = ENOMEM;
+		goto out;
+	}
 
 	switch (ifs->if_type) {
 	case IFT_ETHER:
@@ -848,7 +860,8 @@ bridge_ioctl_add(struct bridge_softc *sc, void *arg)
 		if (bif != NULL)
 			free(bif, M_DEVBUF);
 	}
-	return (error);
+	ifput(ifs);
+	return error;
 }
 
 static int

@@ -457,7 +457,7 @@ agr_setconfig(struct agr_softc *sc, const struct agrreq *ar)
 	if (error) {
 		return error;
 	}
-	ifp_port = ifunit(ifname);
+	ifp_port = ifget(ifname);
 	if (ifp_port == NULL) {
 		return ENOENT;
 	}
@@ -477,6 +477,7 @@ agr_setconfig(struct agr_softc *sc, const struct agrreq *ar)
 		break;
 	}
 	agr_ports_unlock(sc);
+	ifput(ifp_port);
 
 	return error;
 }

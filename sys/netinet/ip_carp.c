@@ -1976,10 +1976,12 @@ carp_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 			break;
 		error = 1;
 		if (carpr.carpr_carpdev[0] != '\0' &&
-		    (cdev = ifunit(carpr.carpr_carpdev)) == NULL)
-			return (EINVAL);
-		if ((error = carp_set_ifp(sc, cdev)))
-			return (error);
+		    (cdev = ifget(carpr.carpr_carpdev)) == NULL)
+			return EINVAL;
+		error = carp_set_ifp(sc, cdev);
+		ifput(cdev);
+		if (error)
+			return error;
 		if (sc->sc_state != INIT && carpr.carpr_state != sc->sc_state) {
 			switch (carpr.carpr_state) {
 			case BACKUP:

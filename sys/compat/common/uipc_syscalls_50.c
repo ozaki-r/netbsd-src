@@ -62,16 +62,16 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 {
 	struct oifdatareq *ifdr = data;
 	struct ifnet *ifp;
-	int error;
+	int error = 0;
 
-	ifp = ifunit(ifdr->ifdr_name);
+	ifp = ifget(ifdr->ifdr_name);
 	if (ifp == NULL)
 		return ENXIO;
 
 	switch (cmd) {
 	case SIOCGIFDATA:
 		ifdatan2o(&ifdr->ifdr_data, &ifp->if_data);
-		return 0;
+		break;
 
 	case SIOCZIFDATA:
 		if (l != NULL) {
@@ -80,7 +80,7 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 			    KAUTH_REQ_NETWORK_INTERFACE_SETPRIV, ifp,
 			    (void *)cmd, NULL);
 			if (error != 0)
-				return error;
+				goto out;
 		}
 		ifdatan2o(&ifdr->ifdr_data, &ifp->if_data);
 		/*
@@ -89,10 +89,13 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 		 */
 		memset(&ifp->if_data.ifi_ipackets, 0, sizeof(ifp->if_data) -
 		    offsetof(struct if_data, ifi_ipackets));
-		return 0;
+		break;
 
 	default:
-		return EINVAL;
+		error = EINVAL;
 	}
+out:
+	ifput(ifp);
+	return error;
 }
 #endif

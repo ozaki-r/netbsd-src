@@ -154,11 +154,15 @@ natm_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
 	 * convert interface string to ifp, validate.
 	 */
 
-	ifp = ifunit(snatm->snatm_if);
-	if (ifp == NULL || (ifp->if_flags & IFF_RUNNING) == 0) {
+	ifp = ifget(snatm->snatm_if);
+	if (ifp == NULL)
+		return ENXIO;
+	if (ifp->if_flags & IFF_RUNNING == 0) {
+		ifput(ifp);
 		return ENXIO;
 	}
 	if (ifp->if_output != atm_output) {
+		ifput(ifp);
 		return EAFNOSUPPORT;
 	}
 
@@ -166,8 +170,10 @@ natm_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
 	 * register us with the NATM PCB layer
 	 */
 
-	if (npcb_add(npcb, ifp, snatm->snatm_vci, snatm->snatm_vpi) != npcb)
+	if (npcb_add(npcb, ifp, snatm->snatm_vci, snatm->snatm_vpi) != npcb) {
+		ifput(ifp);
 		return EADDRINUSE;
+	}
 
 	/*
 	 * enable rx
@@ -184,6 +190,7 @@ natm_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
 		return EIO;
 	}
 	splx(s2);
+	ifput(ifp);
 
 	soisconnected(so);
 	return error;

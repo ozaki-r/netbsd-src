@@ -216,7 +216,7 @@ compat_ifioctl(struct socket *so, u_long ocmd, u_long cmd, void *data,
 {
 	int error;
 	struct ifreq *ifr = (struct ifreq *)data;
-	struct ifnet *ifp = ifunit(ifr->ifr_name);
+	struct ifnet *ifp = ifget(ifr->ifr_name);
 	struct sockaddr *sa;
 
 	if (ifp == NULL)
@@ -265,5 +265,6 @@ compat_ifioctl(struct socket *so, u_long ocmd, u_long cmd, void *data,
 		*(u_int16_t *)&ifr->ifr_addr = 
 		    ((struct sockaddr *)&ifr->ifr_addr)->sa_family;
 	}
+	ifput(ifp);
 	return error;
 }

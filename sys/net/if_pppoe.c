@@ -884,9 +884,14 @@ pppoe_ioctl(struct ifnet *ifp, unsigned long cmd, void *data)
 		if (parms->eth_ifname[0] != 0) {
 			struct ifnet	*eth_if;
 
-			eth_if = ifunit(parms->eth_ifname);
-			if (eth_if == NULL || eth_if->if_dlt != DLT_EN10MB) {
+			eth_if = ifget(parms->eth_ifname);
+			if (eth_if == NULL) {
 				sc->sc_eth_if = NULL;
+				return ENXIO;
+			}
+			if (eth_if->if_dlt != DLT_EN10MB) {
+				sc->sc_eth_if = NULL;
+				ifput(eth_if);
 				return ENXIO;
 			}
 
@@ -896,6 +901,7 @@ pppoe_ioctl(struct ifnet *ifp, unsigned long cmd, void *data)
 				    PPPOE_OVERHEAD;
 			}
 			sc->sc_eth_if = eth_if;
+			ifput(eth_if);
 		}
 		if (parms->ac_name != NULL) {
 			size_t s;

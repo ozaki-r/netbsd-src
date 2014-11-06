@@ -123,8 +123,9 @@ npf_ifmap_register(const char *ifname)
 	strlcpy(nim->n_ifname, ifname, IFNAMSIZ);
 
 	KERNEL_LOCK(1, NULL);
-	if ((ifp = ifunit(ifname)) != NULL) {
+	if ((ifp = ifget(ifname)) != NULL) {
 		ifp->if_pf_kif = (void *)(uintptr_t)i;
+		ifput(ifp);
 	}
 	KERNEL_UNLOCK_ONE(NULL);
 out:

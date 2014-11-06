@@ -513,11 +513,13 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 			error = EINVAL;		 /* check for valid tag */
 			break;
 		}
-		if ((pr = ifunit(vlr.vlr_parent)) == 0) {
+		if ((pr = ifget(vlr.vlr_parent)) == NULL) {
 			error = ENOENT;
 			break;
 		}
-		if ((error = vlan_config(ifv, pr)) != 0)
+		error = vlan_config(ifv, pr);
+		ifput(pr);
+		if (error != 0)
 			break;
 		ifv->ifv_tag = vlr.vlr_tag;
 		ifp->if_flags |= IFF_RUNNING;
