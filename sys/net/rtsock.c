@@ -1239,6 +1239,7 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	struct rt_walkarg *w = v;
 	int error = 0, size;
 	struct rt_addrinfo info;
+	struct ifnet *ifp;
 
 	if (w->w_op == NET_RT_FLAGS && !(rt->rt_flags & w->w_arg))
 		return 0;
@@ -1247,28 +1248,40 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
 	info.rti_info[RTAX_TAG] = rt_gettag(rt);
-	if (rt->rt_ifp) {
+
+	IFNET_LOCK();
+	ifp = rt->rt_ifp;
+	if (ifp != NULL && !ifp->if_dying) {
 		const struct ifaddr *rtifa;
-		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
+		refcount_hold(&ifp->if_refcount);
+		info.rti_info[RTAX_IFP] = ifp->if_dl->ifa_addr;
 		/* rtifa used to be simply rt->rt_ifa.  If rt->rt_ifa != NULL,
 		 * then rt_get_ifa() != NULL.  So this ought to still be safe.
 		 * --dyoung
 		 */
 		rtifa = rt_get_ifa(rt);
 		info.rti_info[RTAX_IFA] = rtifa->ifa_addr;
-		if (rt->rt_ifp->if_flags & IFF_POINTOPOINT)
+		if (ifp->if_flags & IFF_POINTOPOINT)
 			info.rti_info[RTAX_BRD] = rtifa->ifa_dstaddr;
+	} else {
+		ifp = NULL;
 	}
-	if ((error = rt_msg2(RTM_GET, &info, 0, w, &size)))
+	IFNET_UNLOCK();
+
+	if (ifp == NULL)
+		return ENXIO;
+
+	if ((error = rt_msg2(RTM_GET, &info, 0, w, &size))) {
+		ifput(ifp);
 		return error;
+	}
 	if (w->w_where && w->w_tmem && w->w_needed <= 0) {
 		struct rt_xmsghdr *rtm = (struct rt_xmsghdr *)w->w_tmem;
 
 		rtm->rtm_flags = rt->rt_flags;
 		rtm->rtm_use = rt->rt_use;
 		rtm_setmetrics(rt, rtm);
-		KASSERT(rt->rt_ifp != NULL);
-		rtm->rtm_index = rt->rt_ifp->if_index;
+		rtm->rtm_index = ifp->if_index;
 		rtm->rtm_errno = rtm->rtm_pid = rtm->rtm_seq = 0;
 		rtm->rtm_addrs = info.rti_addrs;
 		if ((error = copyout(rtm, w->w_where, size)) != 0)
@@ -1276,6 +1289,7 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 		else
 			w->w_where = (char *)w->w_where + size;
 	}
+	ifput(ifp);
 	return error;
 }
 
