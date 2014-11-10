@@ -661,10 +661,13 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 					}
 					rt_replace_ifa(rt, ifa);
 					rt->rt_ifp = ifp;
+					rt->rt_if_index = ifp->if_index;
 				}
 			}
-			if (ifp && rt->rt_ifp != ifp)
+			if (ifp && rt->rt_ifp != ifp) {
 				rt->rt_ifp = ifp;
+				rt->rt_if_index = ifp->if_index;
+			}
 			rt_setmetrics(rtm->rtm_inits, rtm, rt);
 			if (rt->rt_flags != info.rti_flags)
 				rt->rt_flags = (info.rti_flags & ~PRESERVED_RTF)
@@ -1249,11 +1252,9 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
 	info.rti_info[RTAX_TAG] = rt_gettag(rt);
 
-	IFNET_LOCK();
-	ifp = rt->rt_ifp;
-	if (ifp != NULL && !ifp->if_dying) {
+	ifp = ifget_byindex(rt->rt_if_index);
+	if (ifp != NULL) {
 		const struct ifaddr *rtifa;
-		refcount_hold(&ifp->if_refcount);
 		info.rti_info[RTAX_IFP] = ifp->if_dl->ifa_addr;
 		/* rtifa used to be simply rt->rt_ifa.  If rt->rt_ifa != NULL,
 		 * then rt_get_ifa() != NULL.  So this ought to still be safe.
@@ -1266,7 +1267,6 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	} else {
 		ifp = NULL;
 	}
-	IFNET_UNLOCK();
 
 	if (ifp == NULL)
 		return ENXIO;

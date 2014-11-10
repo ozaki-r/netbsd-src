@@ -1059,6 +1059,7 @@ if_rt_walktree(struct rtentry *rt, void *v)
 	    rt_mask(rt), rt->rt_flags, NULL);
 	KASSERT((rt->rt_flags & RTF_UP) == 0);
 	rt->rt_ifp = NULL;
+	rt->rt_if_index = -1;
 	rtfree(rt);
 	if (error != 0)
 		printf("%s: warning: unable to delete rtentry @ %p, "
@@ -1769,6 +1770,25 @@ ifnet_t *
 if_byindex(u_int idx)
 {
 	return (idx < if_indexlim) ? ifindex2ifnet[idx] : NULL;
+}
+
+ifnet_t *
+ifget_byindex(u_int idx)
+{
+	struct ifnet *ifp;
+	int s;
+
+	IFNET_RENTER(s);
+	ifp = if_byindex(idx);
+	if (ifp != NULL) {
+		if (IFNET_DYING_P(ifp))
+			ifp = NULL;
+		else
+			refcount_hold(ifp->if_refcount);
+	}
+	IFNET_REXIT(s);
+
+	return ifp;
 }
 
 /* common */
@@ -2680,28 +2700,33 @@ if_sdl_sysctl(SYSCTLFN_ARGS)
 {
 	struct ifnet *ifp;
 	const struct sockaddr_dl *sdl;
+	int r = 0;
 
 	if (namelen != 1)
 		return EINVAL;
 
-	ifp = if_byindex(name[0]);
+	ifp = ifget_byindex(name[0]);
 	if (ifp == NULL)
 		return ENODEV;
 
 	sdl = ifp->if_sadl;
 	if (sdl == NULL) {
 		*oldlenp = 0;
-		return 0;
+		goto out;
 	}
 
 	if (oldp == NULL) {
 		*oldlenp = sdl->sdl_alen;
-		return 0;
+		goto out;
 	}
 
 	if (*oldlenp >= sdl->sdl_alen)
 		*oldlenp = sdl->sdl_alen;
-	return sysctl_copyout(l, &sdl->sdl_data[sdl->sdl_nlen], oldp, *oldlenp);
+	r = sysctl_copyout(l, &sdl->sdl_data[sdl->sdl_nlen], oldp, *oldlenp);
+
+out:
+	ifput(ifp);
+	return r;
 }
 
 SYSCTL_SETUP(sysctl_net_sdl_setup, "sysctl net.sdl subtree setup")

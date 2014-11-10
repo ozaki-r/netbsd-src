@@ -388,6 +388,7 @@ rtfree(struct rtentry *rt)
 		rt->rt_ifa = NULL;
 		ifafree(ifa);
 		rt->rt_ifp = NULL;
+		rt->rt_if_index = -1;
 		rt_destroy(rt);
 		pool_put(&rtentry_pool, rt);
 	}
@@ -758,10 +759,13 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (info->rti_info[RTAX_IFP] != NULL &&
 		    (ifa2 = ifa_ifwithnet(info->rti_info[RTAX_IFP])) != NULL &&
-		    ifa2->ifa_ifp != NULL)
+		    ifa2->ifa_ifp != NULL) {
 			rt->rt_ifp = ifa2->ifa_ifp;
-		else
+			rt->rt_if_index = ifa2->ifa_ifp->if_index;
+		} else {
 			rt->rt_ifp = ifa->ifa_ifp;
+			rt->rt_if_index = ifa->ifa_ifp->if_index;
+		}
 		if (req == RTM_RESOLVE) {
 			rt->rt_rmx = (*ret_nrt)->rt_rmx; /* copy metrics */
 			rt->rt_parent = *ret_nrt;
@@ -977,6 +981,7 @@ rtinit(struct ifaddr *ifa, int cmd, int flags)
 			}
 			rt_replace_ifa(rt, ifa);
 			rt->rt_ifp = ifa->ifa_ifp;
+			rt->rt_if_index = ifa->ifa_ifp->if_index;
 			if (ifa->ifa_rtrequest != NULL)
 				ifa->ifa_rtrequest(RTM_ADD, rt, &info);
 		}

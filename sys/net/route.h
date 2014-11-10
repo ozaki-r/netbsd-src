@@ -106,6 +106,7 @@ struct rtentry {
 	int	rt_refcnt;		/* # held references */
 	uint64_t rt_use;			/* raw # packets forwarded */
 	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+	u_short	rt_if_index;		/* numeric abbreviation for the interface */
 	struct	ifaddr *rt_ifa;		/* the answer: interface to use */
 	uint32_t rt_ifa_seqno;
 	void *	rt_llinfo;		/* pointer to link level info cache */
@@ -135,6 +136,7 @@ struct ortentry {
 	int16_t	rt_refcnt;		/* # held references */
 	uint32_t rt_use;		/* raw # packets forwarded */
 	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+	u_short	rt_if_index;		/* numeric abbreviation for the interface */
 };
 
 #define	RTF_UP		0x1		/* route usable */

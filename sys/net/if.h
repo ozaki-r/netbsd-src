@@ -961,6 +961,7 @@ int	ifioctl_common(struct ifnet *, u_long, void *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);
 ifnet_t	*ifget(const char *);
+ifnet_t	*ifget_byindex(u_int);
 void	ifhold(ifnet_t *);
 void	ifput(ifnet_t *ifp);
 int	if_addr_init(ifnet_t *, struct ifaddr *, bool);
