@@ -210,12 +210,15 @@ struct ifqueue {
 };
 
 struct ifnet_lock;
+struct refcount;
 
 #ifdef _KERNEL
 #include <sys/condvar.h>
 #include <sys/percpu.h>
 #include <sys/callout.h>
 #include <sys/pserialize.h>
+#include <sys/atomic.h>
+#include <sys/kmem.h>
 
 struct ifnet_lock {
 	kmutex_t il_lock;	/* Protects the critical section. */
@@ -235,6 +238,79 @@ struct ifnet_lock {
 				 * before they leave.
 				 */
 };
+
+struct refcount {
+	kcondvar_t	rc_cv;
+	unsigned int	rc_refs;
+	bool		rc_waiting;
+	kmutex_t	*rc_mtx;
+};
+
+static inline void
+refcount_init(struct refcount **rc, kmutex_t *mtx, const char *wmesg)
+{
+	struct refcount *rcp;
+
+	rcp = kmem_alloc(sizeof(**rc), KM_SLEEP);
+	KASSERT(rcp != NULL);
+
+	cv_init(&rcp->rc_cv, wmesg);
+	rcp->rc_refs = 0;
+	rcp->rc_waiting = false;
+	rcp->rc_mtx = mtx;
+
+	*rc = rcp;
+}
+
+static inline void
+refcount_destroy(struct refcount *rcp)
+{
+	cv_destroy(&rcp->rc_cv);
+	kmem_free(rcp, sizeof(*rcp));
+}
+
+static inline void
+refcount_hold(struct refcount *rc)
+{
+	atomic_inc_uint(&rc->rc_refs);
+}
+
+static inline void
+refcount_release(struct refcount *rc)
+{
+	unsigned int refs;
+
+	do {
+		refs = rc->rc_refs;
+		if (refs == 1) {
+			mutex_enter(rc->rc_mtx);
+			refs = atomic_dec_uint_nv(&rc->rc_refs);
+			if (__predict_false(refs == 0 && rc->rc_waiting))
+				cv_broadcast(&rc->rc_cv);
+			mutex_exit(rc->rc_mtx);
+			break;
+		}
+	} while (atomic_cas_uint(&rc->rc_refs, refs, refs - 1) != refs);
+}
+
+static inline int
+refcount_refs(struct refcount *rc)
+{
+	return rc->rc_refs;
+}
+
+static inline void
+refcount_wait(struct refcount *rc)
+{
+	KASSERT(mutex_owned(rc->rc_mtx));
+
+	rc->rc_waiting = true;
+	membar_sync();
+	while (__predict_false(rc->rc_refs > 0)) {
+		cv_wait(&rc->rc_cv, rc->rc_mtx);
+	}
+	rc->rc_waiting = false;
+}
 #endif /* _KERNEL */
 
 /*
