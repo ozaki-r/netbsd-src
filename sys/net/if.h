@@ -215,6 +215,7 @@ struct ifnet_lock;
 #include <sys/condvar.h>
 #include <sys/percpu.h>
 #include <sys/callout.h>
+#include <sys/pserialize.h>
 
 struct ifnet_lock {
 	kmutex_t il_lock;	/* Protects the critical section. */
@@ -947,10 +948,18 @@ __END_DECLS
 
 #ifdef _KERNEL
 
+extern kmutex_t	ifnet_mtx;
+
 #define	IFNET_FIRST()			TAILQ_FIRST(&ifnet_list)
 #define	IFNET_EMPTY()			TAILQ_EMPTY(&ifnet_list)
 #define	IFNET_NEXT(__ifp)		TAILQ_NEXT((__ifp), if_list)
 #define	IFNET_FOREACH(__ifp)		TAILQ_FOREACH(__ifp, &ifnet_list, if_list)
+#define	IFNET_RENTER(__s)		do {(__s) = pserialize_read_enter();} while (0)
+#define	IFNET_REXIT(__s)		pserialize_read_exit((__s))
+#define	IFNET_LOCK()			mutex_enter(&ifnet_mtx)
+#define	IFNET_UNLOCK()			mutex_exit(&ifnet_mtx)
+#define	IFNET_LOCKED()			mutex_owned(&ifnet_mtx)
+
 #define	IFADDR_FIRST(__ifp)		TAILQ_FIRST(&(__ifp)->if_addrlist)
 #define	IFADDR_NEXT(__ifa)		TAILQ_NEXT((__ifa), ifa_list)
 #define	IFADDR_FOREACH(__ifa, __ifp)	TAILQ_FOREACH(__ifa, \

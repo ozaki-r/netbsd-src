@@ -168,6 +168,12 @@ static kmutex_t			if_clone_mtx;
 
 static struct ifaddr **		ifnet_addrs = NULL;
 
+/*
+ * Mutex to protect the above objects.
+ */
+kmutex_t			ifnet_mtx __cacheline_aligned;
+static pserialize_t		ifnet_psz;
+
 struct ifnet *lo0ifp;
 int	ifqmaxlen = IFQ_MAXLEN;
 
@@ -255,6 +261,8 @@ ifinit1(void)
 {
 	mutex_init(&index_gen_mtx, MUTEX_DEFAULT, IPL_NONE);
 	mutex_init(&if_clone_mtx, MUTEX_DEFAULT, IPL_NONE);
+	ifnet_psz = pserialize_create();
+	mutex_init(&ifnet_mtx, MUTEX_DEFAULT, IPL_NONE);
 	TAILQ_INIT(&ifnet_list);
 	if_indexlim = 8;
 
@@ -478,8 +486,8 @@ if_activate_sadl(struct ifnet *ifp, struct ifaddr *ifa,
 static void
 if_free_sadl(struct ifnet *ifp)
 {
-	struct ifaddr *ifa;
 	int s;
+	struct ifaddr *ifa;
 
 	ifa = ifnet_addrs[ifp->if_index];
 	if (ifa == NULL) {
@@ -660,7 +668,9 @@ if_register(ifnet_t *ifp)
 		if_slowtimo(ifp);
 	}
 
+	IFNET_LOCK();
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
+	IFNET_UNLOCK();
 }
 
 /*
@@ -681,6 +691,7 @@ if_attachdomain(void)
 	int s;
 
 	s = splnet();
+	/* Called only during boot */
 	IFNET_FOREACH(ifp)
 		if_attachdomain1(ifp);
 	splx(s);
@@ -771,6 +782,15 @@ if_detach(struct ifnet *ifp)
 
 	s = splnet();
 
+	sysctl_teardown(&ifp->if_sysctl_log);
+
+	IFNET_LOCK();
+	ifindex2ifnet[ifp->if_index] = NULL;
+	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
+
+	pserialize_perform(ifnet_psz);
+	IFNET_UNLOCK();
+
 	if (ifp->if_slowtimo != NULL) {
 		ifp->if_slowtimo = NULL;
 		callout_halt(ifp->if_slowtimo_ch, NULL);
@@ -792,8 +812,6 @@ if_detach(struct ifnet *ifp)
 
 	if (ifp->if_snd.ifq_lock)
 		mutex_obj_free(ifp->if_snd.ifq_lock);
-
-	sysctl_teardown(&ifp->if_sysctl_log);
 
 #if NCARP > 0
 	/* Remove the interface from any carp group it is a part of.  */
@@ -904,10 +922,6 @@ again:
 
 	/* Announce that the interface is gone. */
 	rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
-
-	ifindex2ifnet[ifp->if_index] = NULL;
-
-	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
 
 	ifioctl_detach(ifp);
 
@@ -1192,8 +1206,10 @@ struct ifaddr *
 ifa_ifwithaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
-	struct ifaddr *ifa;
+	struct ifaddr *ifa = NULL;
+	int s;
 
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1201,16 +1217,20 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 			if (ifa->ifa_addr->sa_family != addr->sa_family)
 				continue;
 			if (equal(addr, ifa->ifa_addr))
-				return ifa;
+				goto found;
 			if ((ifp->if_flags & IFF_BROADCAST) &&
 			    ifa->ifa_broadaddr &&
 			    /* IP6 doesn't have broadcast */
 			    ifa->ifa_broadaddr->sa_len != 0 &&
 			    equal(ifa->ifa_broadaddr, addr))
-				return ifa;
+				goto found;
 		}
 	}
-	return NULL;
+	ifa = NULL;
+found:
+	IFNET_REXIT(s);
+
+	return ifa;
 }
 
 /*
@@ -1222,7 +1242,9 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
@@ -1232,10 +1254,13 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 			if (ifa->ifa_addr->sa_family != addr->sa_family ||
 			    ifa->ifa_dstaddr == NULL)
 				continue;
-			if (equal(addr, ifa->ifa_dstaddr))
+			if (equal(addr, ifa->ifa_dstaddr)) {
+				IFNET_REXIT(s);
 				return ifa;
+			}
 		}
 	}
+	IFNET_REXIT(s);
 	return NULL;
 }
 
@@ -1252,13 +1277,17 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	struct ifaddr *ifa_maybe = 0;
 	u_int af = addr->sa_family;
 	const char *addr_data = addr->sa_data, *cplim;
+	int s;
 
+	IFNET_RENTER(s);
 	if (af == AF_LINK) {
 		sdl = satocsdl(addr);
 		if (sdl->sdl_index && sdl->sdl_index < if_indexlim &&
 		    ifindex2ifnet[sdl->sdl_index] &&
-		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput)
-			return ifnet_addrs[sdl->sdl_index];
+		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput) {
+			ifa_maybe = ifnet_addrs[sdl->sdl_index];
+			goto out;
+		}
 	}
 #ifdef NETATALK
 	if (af == AF_APPLETALK) {
@@ -1271,14 +1300,16 @@ ifa_ifwithnet(const struct sockaddr *addr)
 			if (ifa == NULL)
 				continue;
 			sat2 = (struct sockaddr_at *)ifa->ifa_addr;
-			if (sat2->sat_addr.s_net == sat->sat_addr.s_net)
-				return ifa; /* exact match */
+			if (sat2->sat_addr.s_net == sat->sat_addr.s_net) {
+				ifa_maybe = ifa; /* exact match */
+				goto out;
+			}
 			if (ifa_maybe == NULL) {
 				/* else keep the if with the right range */
 				ifa_maybe = ifa;
 			}
 		}
-		return ifa_maybe;
+		goto out;
 	}
 #endif
 	IFNET_FOREACH(ifp) {
@@ -1307,6 +1338,8 @@ ifa_ifwithnet(const struct sockaddr *addr)
 				ifa_maybe = ifa;
 		}
 	}
+out:
+	IFNET_REXIT(s);
 	return ifa_maybe;
 }
 
@@ -1332,15 +1365,20 @@ ifa_ifwithaf(int af)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
-			if (ifa->ifa_addr->sa_family == af)
+			if (ifa->ifa_addr->sa_family == af) {
+				IFNET_REXIT(s);
 				return ifa;
+			}
 		}
 	}
+	IFNET_REXIT(s);
 	return NULL;
 }
 
@@ -2163,11 +2201,14 @@ ifconf(u_long cmd, void *data)
 		ifrp = ifc->ifc_req;
 	}
 
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			IFNET_UNLOCK();
 			return ENAMETOOLONG;
+		}
 		if (IFADDR_EMPTY(ifp)) {
 			/* Interface with no addresses - send zero sockaddr. */
 			memset(&ifr.ifr_addr, 0, sizeof(ifr.ifr_addr));
@@ -2177,8 +2218,10 @@ ifconf(u_long cmd, void *data)
 			}
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
+				if (error != 0) {
+					IFNET_UNLOCK();
 					return error;
+				}
 				ifrp++;
 				space -= sz;
 			}
@@ -2196,12 +2239,16 @@ ifconf(u_long cmd, void *data)
 			memcpy(&ifr.ifr_space, sa, sa->sa_len);
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
-					return (error);
+				if (error != 0) {
+					IFNET_UNLOCK();
+					return error;
+				}
 				ifrp++; space -= sz;
 			}
 		}
 	}
+	IFNET_UNLOCK();
+
 	if (docopy) {
 		KASSERT(0 <= space && space <= ifc->ifc_len);
 		ifc->ifc_len -= space;
