@@ -430,11 +430,14 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 		ifrp = NETBSD32PTR64(ifc.ifc_req);
 	}
 
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			IFNET_UNLOCK();
 			return ENAMETOOLONG;
+		}
 		if (IFADDR_EMPTY(ifp))
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -447,13 +450,16 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 			osa->sa_family = sa->sa_family;
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
+				if (error != 0) {
+					IFNET_UNLOCK();
 					return error;
+				}
 				ifrp++;
 			}
 			space -= sz;
 		}
 	}
+	IFNET_UNLOCK();
 
 	if (docopy)
 		ifc.ifc_len -= space;
@@ -474,6 +480,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 	struct sockaddr_dl *sadl;
 	int error, found;
 	int index, ifnum;
+	int s;
 
 	/*
 	 * We can't emulate this ioctl by calling sys_ioctl() to run
@@ -505,6 +512,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 	 * Try real interface name first, then fake "ethX"
 	 */
 	found = 0;
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (found)
 			break;
@@ -513,6 +521,7 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 			continue;
 		found=1;
 		if (IFADDR_EMPTY(ifp)) {
+			IFNET_REXIT(s);
 			error = ENODEV;
 			goto out;
 		}
@@ -528,10 +537,12 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 				   sizeof(lreq.ifr_hwaddr.sa_data)));
 			lreq.ifr_hwaddr.sa_family =
 				sadl->sdl_family;
+			IFNET_REXIT(s);
 			error = copyout(&lreq, data, sizeof(lreq));
 			goto out;
 		}
 	}
+	IFNET_REXIT(s);
 
 	if (strncmp(lreq.ifr_name, "eth", 3) == 0) {
 		for (ifnum = 0, index = 3;
@@ -542,10 +553,8 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 		}
 
 		error = EINVAL;			/* in case we don't find one */
-		found = 0;
+		IFNET_RENTER(s);
 		IFNET_FOREACH(ifp) {
-			if (found)
-				break;
 			memcpy(lreq.ifr_name, ifp->if_xname,
 			       MIN(LINUX32_IFNAMSIZ, IFNAMSIZ));
 			IFADDR_FOREACH(ifa, ifp) {
@@ -564,11 +573,12 @@ linux32_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 					   sizeof(lreq.ifr_hwaddr.sa_data)));
 				lreq.ifr_hwaddr.sa_family =
 					sadl->sdl_family;
+				IFNET_REXIT(s);
 				error = copyout(&lreq, data, sizeof(lreq));
-				found = 1;
-				break;
+				goto out;
 			}
 		}
+		IFNET_REXIT(s);
 	} else {
 		/* unknown interface, not even an "eth*" name */
 		error = ENODEV;

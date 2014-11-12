@@ -456,6 +456,7 @@ get_ifid(struct ifnet *ifp0, struct ifnet *altifp,
 	struct in6_addr *in6)
 {
 	struct ifnet *ifp;
+	int s;
 
 	/* first, try to get it from the interface itself */
 	if (in6_get_hw_ifid(ifp0, in6) == 0) {
@@ -472,6 +473,7 @@ get_ifid(struct ifnet *ifp0, struct ifnet *altifp,
 	}
 
 	/* next, try to get it from some other hardware interface */
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (ifp == ifp0)
 			continue;
@@ -489,6 +491,7 @@ get_ifid(struct ifnet *ifp0, struct ifnet *altifp,
 			goto success;
 		}
 	}
+	IFNET_REXIT(s);
 
 #if 0
 	/* get from hostid - only for certain architectures */
@@ -957,6 +960,7 @@ in6_tmpaddrtimer(void *ignored_arg)
 	struct nd_ifinfo *ndi;
 	u_int8_t nullbuf[8];
 	struct ifnet *ifp;
+	int s;
 
 	mutex_enter(softnet_lock);
 	KERNEL_LOCK(1, NULL);
@@ -966,6 +970,7 @@ in6_tmpaddrtimer(void *ignored_arg)
 	    ip6_temp_regen_advance) * hz, in6_tmpaddrtimer, NULL);
 
 	memset(nullbuf, 0, sizeof(nullbuf));
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		ndi = ND_IFINFO(ifp);
 		if (memcmp(ndi->randomid, nullbuf, sizeof(nullbuf)) != 0) {
@@ -977,6 +982,7 @@ in6_tmpaddrtimer(void *ignored_arg)
 			    ndi->randomseed1, ndi->randomid);
 		}
 	}
+	IFNET_REXIT(s);
 
 	KERNEL_UNLOCK_ONE(NULL);
 	mutex_exit(softnet_lock);

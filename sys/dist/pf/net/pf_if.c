@@ -119,10 +119,12 @@ pfi_initialize(void)
 
 #ifdef __NetBSD__
 	ifnet_t *ifp;
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		pfi_init_groups(ifp);
 		pfi_attach_ifnet(ifp);
 	}
+	IFNET_UNLOCK();
 
 	pfil_add_hook(pfil_ifnet_wrapper, NULL, PFIL_IFNET, if_pfil);
 	pfil_add_hook(pfil_ifaddr_wrapper, NULL, PFIL_IFADDR, if_pfil);
@@ -139,10 +141,12 @@ pfi_destroy(void)
 	pfil_remove_hook(pfil_ifaddr_wrapper, NULL, PFIL_IFADDR, if_pfil);
 	pfil_remove_hook(pfil_ifnet_wrapper, NULL, PFIL_IFNET, if_pfil);
 
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		pfi_detach_ifnet(ifp);
 		pfi_destroy_groups(ifp);
 	}
+	IFNET_UNLOCK();
 
 	while ((p = RB_MIN(pfi_ifhead, &pfi_ifs))) {
 		RB_REMOVE(pfi_ifhead, &pfi_ifs, p);

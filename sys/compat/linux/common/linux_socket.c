@@ -1131,11 +1131,14 @@ linux_getifconf(struct lwp *l, register_t *retval, void *data)
 		ifrp = ifc.ifc_req;
 	}
 
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			IFNET_UNLOCK();
 			return ENAMETOOLONG;
+		}
 		if (IFADDR_EMPTY(ifp))
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1148,13 +1151,16 @@ linux_getifconf(struct lwp *l, register_t *retval, void *data)
 			osa->sa_family = sa->sa_family;
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
+				if (error != 0) {
+					IFNET_UNLOCK();
 					return error;
+				}
 				ifrp++;
 			}
 			space -= sz;
 		}
 	}
+	IFNET_UNLOCK();
 
 	if (docopy)
 		ifc.ifc_len -= space;
@@ -1207,6 +1213,7 @@ linux_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 	 * Try real interface name first, then fake "ethX"
 	 */
 	found = 0;
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		if (found)
 			break;
@@ -1216,6 +1223,7 @@ linux_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 		found=1;
 		if (IFADDR_EMPTY(ifp)) {
 			error = ENODEV;
+			IFNET_UNLOCK();
 			goto out;
 		}
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1231,9 +1239,11 @@ linux_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 			lreq.ifr_hwaddr.sa_family =
 				sadl->sdl_family;
 			error = copyout(&lreq, data, sizeof(lreq));
+			IFNET_UNLOCK();
 			goto out;
 		}
 	}
+	IFNET_UNLOCK();
 
 	if (strncmp(lreq.ifr_name, "eth", 3) != 0) {
 		/* unknown interface, not even an "eth*" name */
@@ -1250,6 +1260,7 @@ linux_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 
 	error = EINVAL;			/* in case we don't find one */
 	found = 0;
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		if (found)
 			break;
@@ -1276,6 +1287,7 @@ linux_getifhwaddr(struct lwp *l, register_t *retval, u_int fd,
 			break;
 		}
 	}
+	IFNET_UNLOCK();
 
 out:
 	KERNEL_UNLOCK_ONE(NULL);

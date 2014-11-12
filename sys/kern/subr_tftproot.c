@@ -131,16 +131,20 @@ tftproot_dhcpboot(device_t bootdv)
 	int error = -1;
 
 	if (rootspec != NULL) {
-		IFNET_FOREACH(ifp)
+		/* No need to lock because it's called only during bootstrap */
+		IFNET_FOREACH(ifp) {
 			if (strcmp(rootspec, ifp->if_xname) == 0)
 				break;
+		}
 	} 
 
 	if ((ifp == NULL) &&
 	    (bootdv != NULL && device_class(bootdv) == DV_IFNET)) {
-		IFNET_FOREACH(ifp)
+		/* No need to lock because it's called only during bootstrap */
+		IFNET_FOREACH(ifp) {
 			if (strcmp(device_xname(bootdv), ifp->if_xname) == 0)
 				break;
+		}
 	}
 
 	if (ifp == NULL) {

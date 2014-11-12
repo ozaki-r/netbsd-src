@@ -45,17 +45,20 @@ compat_ifconf(u_long cmd, void *data)
 		ifrp = ifc->ifc_req;
 	}
 
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
-			return ENAMETOOLONG;
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			error = ENAMETOOLONG;
+			goto out;
+		}
 		if (IFADDR_EMPTY(ifp)) {
 			memset(&ifr.ifr_addr, 0, sizeof(ifr.ifr_addr));
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0)
-					return (error);
+					goto out;
 				ifrp++;
 			}
 			space -= sizeof(ifr);
@@ -103,7 +106,7 @@ compat_ifconf(u_long cmd, void *data)
 				}
 			}
 			if (error != 0)
-				return (error);
+				goto out;
 			space -= sz;
 		}
 	}
@@ -111,6 +114,10 @@ compat_ifconf(u_long cmd, void *data)
 		ifc->ifc_len -= space;
 	else
 		ifc->ifc_len = -space;
-	return (0);
+	error = 0;
+
+out:
+	IFNET_UNLOCK();
+	return error;
 }
 #endif

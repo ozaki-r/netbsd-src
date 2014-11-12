@@ -1288,6 +1288,8 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 	int	len, error = 0;
 
 	memset(&info, 0, sizeof(info));
+
+	IFNET_LOCK();
 	IFNET_FOREACH(ifp) {
 		if (w->w_arg && w->w_arg != ifp->if_index)
 			continue;
@@ -1312,7 +1314,7 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 			panic("sysctl_iflist(1)");
 		}
 		if (error)
-			return error;
+			goto out;
 		info.rti_info[RTAX_IFP] = NULL;
 		if (w->w_where && w->w_tmem && w->w_needed <= 0) {
 			switch (type) {
@@ -1326,7 +1328,7 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 				ifm->ifm_addrs = info.rti_addrs;
 				error = copyout(ifm, w->w_where, len);
 				if (error)
-					return error;
+					goto out;
 				w->w_where = (char *)w->w_where + len;
 				break;
 			}
@@ -1335,14 +1337,14 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 			case NET_RT_OOIFLIST:
 				error = compat_14_iflist(ifp, w, &info, len);
 				if (error)
-					return error;
+					goto out;
 				break;
 #endif
 #ifdef COMPAT_50
 			case NET_RT_OIFLIST:
 				error = compat_50_iflist(ifp, w, &info, len);
 				if (error)
-					return error;
+					goto out;
 				break;
 #endif
 			default:
@@ -1356,7 +1358,7 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 			info.rti_info[RTAX_NETMASK] = ifa->ifa_netmask;
 			info.rti_info[RTAX_BRD] = ifa->ifa_dstaddr;
 			if ((error = rt_msg2(RTM_NEWADDR, &info, 0, w, &len)))
-				return error;
+				goto out;
 			if (w->w_where && w->w_tmem && w->w_needed <= 0) {
 				struct ifa_xmsghdr *ifam;
 
@@ -1367,14 +1369,16 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 				ifam->ifam_addrs = info.rti_addrs;
 				error = copyout(w->w_tmem, w->w_where, len);
 				if (error)
-					return error;
+					goto out;
 				w->w_where = (char *)w->w_where + len;
 			}
 		}
 		info.rti_info[RTAX_IFA] = info.rti_info[RTAX_NETMASK] =
 		    info.rti_info[RTAX_BRD] = NULL;
 	}
-	return 0;
+out:
+	IFNET_UNLOCK();
+	return error;
 }
 
 static int

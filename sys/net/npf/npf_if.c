@@ -136,6 +136,7 @@ void
 npf_ifmap_flush(void)
 {
 	ifnet_t *ifp;
+	int s;
 
 	KASSERT(npf_config_locked_p());
 
@@ -145,9 +146,11 @@ npf_ifmap_flush(void)
 	npf_ifmap_cnt = 0;
 
 	KERNEL_LOCK(1, NULL);
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		ifp->if_pf_kif = (void *)(uintptr_t)INACTIVE_ID;
 	}
+	IFNET_REXIT(s);
 	KERNEL_UNLOCK_ONE(NULL);
 }
 

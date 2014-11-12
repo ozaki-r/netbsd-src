@@ -1522,6 +1522,7 @@ bge_update_all_threshes(int lvl)
 	struct ifnet *ifp;
 	const char * const namebuf = "bge";
 	int namelen;
+	int s;
 
 	if (lvl < 0)
 		lvl = 0;
@@ -1532,6 +1533,7 @@ bge_update_all_threshes(int lvl)
 	/*
 	 * Now search all the interfaces for this name/number
 	 */
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		if (strncmp(ifp->if_xname, namebuf, namelen) != 0)
 		      continue;
@@ -1539,6 +1541,7 @@ bge_update_all_threshes(int lvl)
 		if (bge_auto_thresh)
 			bge_set_thresh(ifp, lvl);
 	}
+	IFNET_REXIT(s);
 }
 
 /*
