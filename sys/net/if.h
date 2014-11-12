@@ -423,6 +423,8 @@ typedef struct ifnet {
 	struct ifnet_lock *if_ioctl_lock;
 #ifdef _KERNEL /* XXX kvm(3) */
 	struct callout *if_slowtimo_ch;
+	struct refcount *if_refcount;
+	bool if_dying;
 #endif
 } ifnet_t;
  
@@ -958,6 +960,9 @@ extern int (*ifioctl)(struct socket *, u_long, void *, struct lwp *);
 int	ifioctl_common(struct ifnet *, u_long, void *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);
+ifnet_t	*ifget(const char *);
+void	ifhold(ifnet_t *);
+void	ifput(ifnet_t *ifp);
 int	if_addr_init(ifnet_t *, struct ifaddr *, bool);
 int	if_mcast_op(ifnet_t *, const unsigned long, const struct sockaddr *);
 int	if_flags_set(struct ifnet *, const short);
@@ -1035,6 +1040,7 @@ extern kmutex_t	ifnet_mtx;
 #define	IFNET_LOCK()			mutex_enter(&ifnet_mtx)
 #define	IFNET_UNLOCK()			mutex_exit(&ifnet_mtx)
 #define	IFNET_LOCKED()			mutex_owned(&ifnet_mtx)
+#define	IFNET_DYING_P(__ifp)		(__ifp->if_dying)
 
 #define	IFADDR_FIRST(__ifp)		TAILQ_FIRST(&(__ifp)->if_addrlist)
 #define	IFADDR_NEXT(__ifa)		TAILQ_NEXT((__ifa), ifa_list)

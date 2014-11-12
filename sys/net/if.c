@@ -621,6 +621,8 @@ if_initialize(ifnet_t *ifp)
 	ifp->if_capenable = 0;
 	ifp->if_csum_flags_tx = 0;
 	ifp->if_csum_flags_rx = 0;
+	ifp->if_dying = false;
+	refcount_init(&ifp->if_refcount, &ifnet_mtx, "ifp");
 
 #ifdef ALTQ
 	ifp->if_snd.altq_type = 0;
@@ -789,6 +791,7 @@ if_detach(struct ifnet *ifp)
 	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
 
 	pserialize_perform(ifnet_psz);
+	refcount_wait(ifp->if_refcount);
 	IFNET_UNLOCK();
 
 	if (ifp->if_slowtimo != NULL) {
@@ -797,6 +800,8 @@ if_detach(struct ifnet *ifp)
 		callout_destroy(ifp->if_slowtimo_ch);
 		kmem_free(ifp->if_slowtimo_ch, sizeof(*ifp->if_slowtimo_ch));
 	}
+
+	refcount_destroy(ifp->if_refcount);
 
 	/*
 	 * Do an if_down() to give protocols a chance to do something.
@@ -1043,7 +1048,11 @@ if_clone_destroy(const char *name)
 	if (ifc == NULL)
 		return EINVAL;
 
+	IFNET_LOCK();
 	ifp = ifunit(name);
+	if (ifp != NULL)
+		ifp->if_dying = true;
+	IFNET_UNLOCK();
 	if (ifp == NULL)
 		return ENXIO;
 
@@ -1640,7 +1649,7 @@ ifpromisc(struct ifnet *ifp, int pswitch)
 struct ifnet *
 ifunit(const char *name)
 {
-	struct ifnet *ifp;
+	struct ifnet *ifp = NULL;
 	const char *cp = name;
 	u_int unit = 0;
 	u_int i;
@@ -1657,20 +1666,53 @@ ifunit(const char *name)
 	 */
 	if (i == IFNAMSIZ || (cp != name && *cp == '\0')) {
 		if (unit >= if_indexlim)
-			return NULL;
+			goto out;
 		ifp = ifindex2ifnet[unit];
-		if (ifp == NULL || ifp->if_output == if_nulloutput)
-			return NULL;
-		return ifp;
+		if (ifp == NULL || IFNET_DYING_P(ifp) ||
+		    ifp->if_output == if_nulloutput)
+			ifp = NULL;
+		goto out;
 	}
 
 	IFNET_FOREACH(ifp) {
-		if (ifp->if_output == if_nulloutput)
+		if (IFNET_DYING_P(ifp) || ifp->if_output == if_nulloutput)
 			continue;
 	 	if (strcmp(ifp->if_xname, name) == 0)
-			return ifp;
+			goto out;
 	}
-	return NULL;
+	ifp = NULL;
+out:
+	return ifp;
+}
+
+ifnet_t *
+ifget(const char *name)
+{
+	ifnet_t *ifp;
+	int s;
+
+	IFNET_RENTER(s);
+	ifp = ifunit(name);
+	if (ifp != NULL)
+		refcount_hold(ifp->if_refcount);
+	IFNET_REXIT(s);
+
+	return ifp;
+}
+
+void
+ifput(ifnet_t *ifp)
+{
+	if (ifp == NULL)
+		return;
+
+	refcount_release(ifp->if_refcount);
+}
+
+void
+ifhold(ifnet_t *ifp)
+{
+	refcount_hold(ifp->if_refcount);
 }
 
 ifnet_t *
@@ -1967,7 +2009,7 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 #endif
 		ifr = data;
 
-	ifp = ifunit(ifr->ifr_name);
+	ifp = ifget(ifr->ifr_name);
 
 	switch (cmd) {
 	case SIOCIFCREATE:
@@ -1977,9 +2019,12 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 			    KAUTH_NETWORK_INTERFACE,
 			    KAUTH_REQ_NETWORK_INTERFACE_SETPRIV, ifp,
 			    (void *)cmd, NULL);
-			if (error != 0)
+			if (error != 0) {
+				ifput(ifp);
 				return error;
+			}
 		}
+		ifput(ifp);
 		mutex_enter(&if_clone_mtx);
 		r = (cmd == SIOCIFCREATE) ?
 			if_clone_create(ifr->ifr_name) :
@@ -1988,7 +2033,9 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 		return r;
 
 	case SIOCIFGCLONERS:
-		return if_clone_list((struct if_clonereq *)data);
+		r = if_clone_list((struct if_clonereq *)data);
+		ifput(ifp);
+		return r;
 	}
 
 	if (ifp == NULL)
@@ -2026,8 +2073,10 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 			    KAUTH_NETWORK_INTERFACE,
 			    KAUTH_REQ_NETWORK_INTERFACE_SETPRIV, ifp,
 			    (void *)cmd, NULL);
-			if (error != 0)
+			if (error != 0) {
+				ifput(ifp);
 				return error;
+			}
 		}
 	}
 
@@ -2063,6 +2112,7 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 #endif
 
 	ifnet_lock_exit(ifp->if_ioctl_lock);
+	ifput(ifp);
 	return error;
 }
 
