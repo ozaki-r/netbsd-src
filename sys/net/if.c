@@ -168,14 +168,64 @@ static kmutex_t			if_clone_mtx;
 
 static struct ifaddr **		ifnet_addrs = NULL;
 
-/*
- * Mutex to protect the above objects.
- */
 kmutex_t			ifnet_mtx __cacheline_aligned;
 static pserialize_t		ifnet_psz;
 
 struct ifnet *lo0ifp;
 int	ifqmaxlen = IFQ_MAXLEN;
+
+/*
+ * ifnet locking rules:
+ * - ifnet_mtx
+ *   - is an adaptive lock
+ *   - serializes modifications of ifnet_list
+ *   - is used with IFNET_{LOCK,UNLOCK,LOCKED} macros
+ * - ifnet_psz
+ *   - is used for pserialize on ifnet_list and its ifnet objects
+ * - ifnet_list
+ *   - lists all existing ifnet objects
+ *   - should be iterated with IFNET_FOREACH
+ *   - is protected with the pserialize facility
+ *     - must be read between IFNET_RENTER and IFNET_REXIT
+ *       - must not block/sleep during a critical section
+ *       - if want to do so, use the referenc counting facility
+ *         to keep holding an ifnet object (see below)
+ *     - must be modified in the pserialize way:
+ *       call IFNET_LOCK, LIST_REMOVE and pserialize_perform to ensure
+ *       nobody is working on the removing oject
+ *
+ * TODO:
+ * - ifnet_list is access by m_reclaim that calls if_drain routines.
+ *   It works for now (see the comment there), however, it would need
+ *   some work when we try to get rid of KERNEL_LOCK there.
+ */
+
+/*
+ * ifget/ifput/ifhold - ifnet object reference
+ *   A replacement of ifunit API. ifget returns an ifnet object as same as ifunit,
+ *   but additionally it takes a reference to the ifnet object. The kernel won't
+ *   free the ifnet object until there is no reference to it. ifput needs to be
+ *   called when finished working on the ifnet object to release it. ifget may
+ *   return NULL when a target interface is absent or being destroyed. ifhold
+ *   can be used instead of ifget when ifp is already available.
+ *
+ *   Typical usage is like this:
+ *
+ *     ifp = ifget(name);  // or ifhold(ifp);
+ *     if (ifp == NULL)
+ *       return ENXIO;
+ *     // do something on ifp
+ *     ifput(ifp);
+ *
+ *   It uses an adaptive lock so it cannot be used in hardware interrupt.
+ *
+ *   Note that ifget needs no locking, however, ifput needs locking
+ *   to call cv_wait safely. It's good to remove the locking somehow.
+ *
+ * TODO:
+ * - We have to deal with ifnet pointers embedded to other objects, e.g., rtentry.
+ *   An embedded pointer of ifnet can be expired without knowing by its host object.
+ */
 
 static int	if_rt_walktree(struct rtentry *, void *);
 
