@@ -1282,19 +1282,25 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 static int
 sysctl_iflist(int af, struct rt_walkarg *w, int type)
 {
-	struct ifnet *ifp;
+	struct ifnet *ifp, *_next;
 	struct ifaddr *ifa;
 	struct	rt_addrinfo info;
 	int	len, error = 0;
+	int s;
+	bool hold = false;
 
 	memset(&info, 0, sizeof(info));
 
-	IFNET_LOCK();
-	IFNET_FOREACH(ifp) {
-		if (w->w_arg && w->w_arg != ifp->if_index)
+	IFNET_RENTER(s);
+	IFNET_FOREACH_SAFE(ifp, _next) {
+		if (IFNET_DYING_P(ifp) ||
+		    (w->w_arg && w->w_arg != ifp->if_index) ||
+		    IFADDR_EMPTY(ifp))
 			continue;
-		if (IFADDR_EMPTY(ifp))
-			continue;
+		ifhold(ifp);
+		hold = true;
+		IFNET_REXIT(s);
+
 		info.rti_info[RTAX_IFP] = ifp->if_dl->ifa_addr;
 		switch (type) {
 		case NET_RT_IFLIST:
@@ -1375,9 +1381,15 @@ sysctl_iflist(int af, struct rt_walkarg *w, int type)
 		}
 		info.rti_info[RTAX_IFA] = info.rti_info[RTAX_NETMASK] =
 		    info.rti_info[RTAX_BRD] = NULL;
+
+		ifput(ifp);
+		hold = false;
+		IFNET_RENTER(s);
 	}
+	IFNET_REXIT(s);
 out:
-	IFNET_UNLOCK();
+	if (ifp != NULL && hold)
+		ifput(ifp);
 	return error;
 }
 

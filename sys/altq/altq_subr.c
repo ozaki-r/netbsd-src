@@ -352,18 +352,26 @@ static void
 tbr_timeout(void *arg)
 {
 	struct ifnet *ifp;
-	int active, s;
+	int active, s, ss;
 
 	active = 0;
-	IFNET_RENTER(s);
-	IFNET_FOREACH(ifp) {
-		if (!TBR_IS_ENABLED(&ifp->if_snd))
+	IFNET_RENTER(ss);
+	IFNET_FOREACH_SAFE(ifp) {
+		if (IFNET_DYING_P(ifp) || !TBR_IS_ENABLED(&ifp->if_snd))
 			continue;
+		ifhold(ifp);
+		IFNET_REXIT(ss);
+
 		active++;
+		s = splnet();
 		if (!IFQ_IS_EMPTY(&ifp->if_snd) && ifp->if_start != NULL)
 			(*ifp->if_start)(ifp);
+		splx(s);
+
+		ifput(ifp);
+		IFNET_RENTER(ss);
 	}
-	IFNET_REXIT(s);
+	IFNET_REXIT(ss);
 	if (active > 0)
 		CALLOUT_RESET(&tbr_callout, 1, tbr_timeout, (void *)0);
 	else

@@ -1356,6 +1356,8 @@ ni6_input(struct mbuf *m, int off)
 	MGETHDR(n, M_DONTWAIT, m->m_type);
 	if (n == NULL) {
 		m_freem(m);
+		if (ifp != NULL)
+			ifput(ifp);
 		return (NULL);
 	}
 	M_MOVE_PKTHDR(n, m); /* just for rcvif */
@@ -1422,6 +1424,7 @@ ni6_input(struct mbuf *m, int off)
 		    sizeof(struct ip6_hdr) + sizeof(struct icmp6_nodeinfo);
 		lenlim = M_TRAILINGSPACE(n);
 		copied = ni6_store_addrs(ni6, nni6, ifp, lenlim);
+		ifput(ifp);
 		/* XXX: reset mbuf length */
 		n->m_pkthdr.len = n->m_len = sizeof(struct ip6_hdr) +
 			sizeof(struct icmp6_nodeinfo) + copied;
@@ -1439,6 +1442,8 @@ ni6_input(struct mbuf *m, int off)
 	m_freem(m);
 	if (n)
 		m_freem(n);
+	if (ifp != NULL)
+		ifput(ifp);
 	return (NULL);
 }
 #undef hostnamelen
@@ -1704,6 +1709,7 @@ ni6_addrs(struct icmp6_nodeinfo *ni6, struct mbuf *m,
 		}
 		if (iffound) {
 			*ifpp = ifp;
+			ifhold(ifp);
 			IFNET_REXIT(s);
 			return (addrsofif);
 		}

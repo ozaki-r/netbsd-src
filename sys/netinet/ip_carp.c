@@ -922,14 +922,19 @@ carp_prepare_ad(struct mbuf *m, struct carp_softc *sc,
 static void
 carp_send_ad_all(void)
 {
-	struct ifnet *ifp;
+	struct ifnet *ifp, *_next;
 	struct carp_if *cif;
 	struct carp_softc *vh;
+	int s;
 
-	IFNET_LOCK();
-	IFNET_FOREACH(ifp) {
-		if (ifp->if_carp == NULL || ifp->if_type == IFT_CARP)
+	IFNET_RENTER(s);
+	IFNET_FOREACH_SAFE(ifp, _next) {
+		if (ifp->if_carp == NULL || ifp->if_type == IFT_CARP ||
+		    IFNET_DYING_P(ifp))
 			continue;
+
+		ifhold(ifp);
+		IFNET_REXIT(s);
 
 		cif = (struct carp_if *)ifp->if_carp;
 		TAILQ_FOREACH(vh, &cif->vhif_vrs, sc_list) {
@@ -937,8 +942,11 @@ carp_send_ad_all(void)
 			    (IFF_UP|IFF_RUNNING) && vh->sc_state == MASTER)
 				carp_send_ad(vh);
 		}
+
+		ifput(ifp);
+		IFNET_RENTER(s);
 	}
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
 }
 
 

@@ -1035,6 +1035,8 @@ extern kmutex_t	ifnet_mtx;
 #define	IFNET_EMPTY()			TAILQ_EMPTY(&ifnet_list)
 #define	IFNET_NEXT(__ifp)		TAILQ_NEXT((__ifp), if_list)
 #define	IFNET_FOREACH(__ifp)		TAILQ_FOREACH(__ifp, &ifnet_list, if_list)
+#define	IFNET_FOREACH_SAFE(__ifp, __next) \
+	TAILQ_FOREACH_SAFE(__ifp, &ifnet_list, if_list, __next)
 #define	IFNET_RENTER(__s)		do {(__s) = pserialize_read_enter();} while (0)
 #define	IFNET_REXIT(__s)		pserialize_read_exit((__s))
 #define	IFNET_LOCK()			mutex_enter(&ifnet_mtx)
