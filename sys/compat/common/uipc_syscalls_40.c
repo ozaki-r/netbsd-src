@@ -27,6 +27,9 @@ __KERNEL_RCSID(0, "$NetBSD: uipc_syscalls_40.c,v 1.8 2014/11/26 09:53:53 ozaki-r
  * of system.  List may be used
  * in later ioctl's (above) to get
  * other information.
+ *
+ * If the user buffer pointer is NULL, this routine copies no data and
+ * returns the amount of space that would be needed.
  */
 /*ARGSUSED*/
 int
@@ -36,16 +39,20 @@ compat_ifconf(u_long cmd, void *data)
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
 	struct oifreq ifr, *ifrp = NULL;
-	int space = 0, error = 0;
+	int space = 0, error = 0, buflen = 0;
 	const int sz = (int)sizeof(ifr);
 	const bool docopy = ifc->ifc_req != NULL;
+	char *buf = NULL;
+	int s;
 
 	if (docopy) {
-		space = ifc->ifc_len;
-		ifrp = ifc->ifc_req;
+		buflen = space = ifc->ifc_len;
+		buf = kmem_zalloc(buflen, KM_SLEEP);
+		KASSERT(buf != NULL);
+		ifrp = (struct oifreq*)buf;
 	}
 
-	IFNET_LOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
@@ -56,12 +63,10 @@ compat_ifconf(u_long cmd, void *data)
 		if (IFADDR_EMPTY(ifp)) {
 			memset(&ifr.ifr_addr, 0, sizeof(ifr.ifr_addr));
 			if (space >= sz) {
-				error = copyout(&ifr, ifrp, sz);
-				if (error != 0)
-					goto out;
+				memcpy(ifrp, &ifr, sz);
 				ifrp++;
 			}
-			space -= sizeof(ifr);
+			space -= sz;
 			continue;
 		}
 
@@ -79,7 +84,7 @@ compat_ifconf(u_long cmd, void *data)
 				memcpy(&ifr.ifr_addr, sa, sa->sa_len);
 				osa->sa_family = sa->sa_family;
 				if (space >= sz) {
-					error = copyout(&ifr, ifrp, sz);
+					memcpy(ifrp, &ifr, sz);
 					ifrp++;
 				}
 			} else
@@ -87,37 +92,39 @@ compat_ifconf(u_long cmd, void *data)
 			if (sa->sa_len <= sizeof(*sa)) {
 				memcpy(&ifr.ifr_addr, sa, sa->sa_len);
 				if (space >= sz) {
-					error = copyout(&ifr, ifrp, sz);
+					memcpy(ifrp, &ifr, sz);
 					ifrp++;
 				}
 			} else {
 				space -= sa->sa_len - sizeof(*sa);
 				if (space >= sz) {
-					error = copyout(&ifr, ifrp,
+					memcpy(ifrp, &ifr,
 					    sizeof(ifr.ifr_name));
-					if (error == 0) {
-						error = copyout(sa,
-						    &ifrp->ifr_addr,
-						    sa->sa_len);
-					}
+					memcpy(&ifrp->ifr_addr, sa,
+					    sa->sa_len);
 					ifrp = (struct oifreq *)
 						(sa->sa_len +
 						 (char *)&ifrp->ifr_addr);
 				}
 			}
-			if (error != 0)
-				goto out;
 			space -= sz;
 		}
 	}
-	if (docopy)
-		ifc->ifc_len -= space;
-	else
-		ifc->ifc_len = -space;
-	error = 0;
-
 out:
-	IFNET_UNLOCK();
+	IFNET_REXIT(s);
+
+	if (error == 0) {
+		if (docopy) {
+			ifc->ifc_len -= space;
+			KASSERT(ifc->ifc_len <= buflen);
+			error = copyout(buf, ifc->ifc_req, ifc->ifc_len);
+		} else
+			ifc->ifc_len = -space;
+	}
+
+	if (docopy)
+		kmem_free(buf, buflen);
+
 	return error;
 }
 #endif

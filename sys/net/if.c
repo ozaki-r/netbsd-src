@@ -2242,22 +2242,26 @@ ifconf(u_long cmd, void *data)
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
 	struct ifreq ifr, *ifrp = NULL;
-	int space = 0, error = 0;
+	int space = 0, error = 0, buflen = 0;
 	const int sz = (int)sizeof(struct ifreq);
 	const bool docopy = ifc->ifc_req != NULL;
+	char *buf = NULL;
+	int s;
 
 	if (docopy) {
-		space = ifc->ifc_len;
-		ifrp = ifc->ifc_req;
+		buflen = space = ifc->ifc_len;
+		buf = kmem_zalloc(buflen, KM_SLEEP);
+		KASSERT(buf != NULL);
+		ifrp = (struct ifreq*)buf;
 	}
 
-	IFNET_LOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
 		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
-			IFNET_UNLOCK();
-			return ENAMETOOLONG;
+			error = ENAMETOOLONG;
+			goto out;
 		}
 		if (IFADDR_EMPTY(ifp)) {
 			/* Interface with no addresses - send zero sockaddr. */
@@ -2267,11 +2271,7 @@ ifconf(u_long cmd, void *data)
 				continue;
 			}
 			if (space >= sz) {
-				error = copyout(&ifr, ifrp, sz);
-				if (error != 0) {
-					IFNET_UNLOCK();
-					return error;
-				}
+				memcpy(ifrp, &ifr, sz);
 				ifrp++;
 				space -= sz;
 			}
@@ -2288,25 +2288,31 @@ ifconf(u_long cmd, void *data)
 			}
 			memcpy(&ifr.ifr_space, sa, sa->sa_len);
 			if (space >= sz) {
-				error = copyout(&ifr, ifrp, sz);
-				if (error != 0) {
-					IFNET_UNLOCK();
-					return error;
-				}
+				memcpy(ifrp, &ifr, sz);
 				ifrp++; space -= sz;
 			}
 		}
 	}
-	IFNET_UNLOCK();
+out:
+	IFNET_REXIT(s);
 
-	if (docopy) {
-		KASSERT(0 <= space && space <= ifc->ifc_len);
-		ifc->ifc_len -= space;
-	} else {
-		KASSERT(space >= 0);
-		ifc->ifc_len = space;
+	if (error == 0) {
+		if (docopy) {
+			KASSERT(0 <= space && space <= ifc->ifc_len);
+			ifc->ifc_len -= space;
+
+			KASSERT(ifc->ifc_len <= buflen);
+			error = copyout(buf, ifc->ifc_req, ifc->ifc_len);
+		} else {
+			KASSERT(space >= 0);
+			ifc->ifc_len = space;
+		}
 	}
-	return (0);
+
+	if (docopy)
+		kmem_free(buf, buflen);
+
+	return error;
 }
 
 int

@@ -416,9 +416,11 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 	struct ifaddr *ifa;
 	struct sockaddr *sa;
 	struct osockaddr *osa;
-	int space = 0, error = 0;
+	int space = 0, error = 0, buflen = 0;
 	const int sz = (int)sizeof(ifr);
 	bool docopy;
+	char *buf = NULL;
+	int s;
 
 	error = copyin(data, &ifc, sizeof(ifc));
 	if (error)
@@ -426,17 +428,19 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 
 	docopy = NETBSD32PTR64(ifc.ifc_req) != NULL;
 	if (docopy) {
-		space = ifc.ifc_len;
-		ifrp = NETBSD32PTR64(ifc.ifc_req);
+		buflen = space = ifc.ifc_len;
+		buf = kmem_zalloc(buflen, KM_SLEEP);
+		KASSERT(buf != NULL);
+		ifrp = (struct linux32_ifreq*)buf;
 	}
 
-	IFNET_LOCK();
+	IFNET_RENTER(s);
 	IFNET_FOREACH(ifp) {
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
 		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
-			IFNET_UNLOCK();
-			return ENAMETOOLONG;
+			error = ENAMETOOLONG;
+			goto out;
 		}
 		if (IFADDR_EMPTY(ifp))
 			continue;
@@ -449,24 +453,31 @@ linux32_getifconf(struct lwp *l, register_t *retval, void *data)
 			osa = (struct osockaddr *)&ifr.ifr_addr;
 			osa->sa_family = sa->sa_family;
 			if (space >= sz) {
-				error = copyout(&ifr, ifrp, sz);
-				if (error != 0) {
-					IFNET_UNLOCK();
-					return error;
-				}
+				memcpy(ifrp, &ifr, sz);
 				ifrp++;
 			}
 			space -= sz;
 		}
 	}
-	IFNET_UNLOCK();
+out:
+	IFNET_REXIT(s);
+
+	if (error == 0) {
+		if (docopy) {
+			ifc.ifc_len -= space;
+			KASSERT(ifc.ifc_len <= buflen);
+			error = copyout(buf, NETBSD32PTR64(ifc.ifc_req), ifc.ifc_len);
+		} else
+			ifc.ifc_len = -space;
+
+		if (error == 0)
+			error = copyout(&ifc, data, sizeof(ifc));
+	}
 
 	if (docopy)
-		ifc.ifc_len -= space;
-	else
-		ifc.ifc_len = -space;
+		kmem_free(buf, buflen);
 
-	return copyout(&ifc, data, sizeof(ifc));
+	return error;
 }
 
 int
