@@ -585,16 +585,10 @@ skip:
  * Attach an interface to the list of "active" interfaces.
  */
 void
-if_attach(ifnet_t *ifp)
+if_init(ifnet_t *ifp)
 {
 	KASSERT(if_indexlim > 0);
 	TAILQ_INIT(&ifp->if_addrlist);
-	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
-
-	if (ifioctl_attach(ifp) != 0)
-		panic("%s: ifioctl_attach() failed", __func__);
-
-	if_getindex(ifp);
 
 	/*
 	 * Link level name is allocated later by a separate call to
@@ -603,8 +597,6 @@ if_attach(ifnet_t *ifp)
 
 	if (ifp->if_snd.ifq_maxlen == 0)
 		ifp->if_snd.ifq_maxlen = ifqmaxlen;
-
-	sysctl_sndq_setup(&ifp->if_sysctl_log, ifp->if_xname, &ifp->if_snd);
 
 	ifp->if_broadcastaddr = 0; /* reliably crash if used uninitialized */
 
@@ -632,6 +624,17 @@ if_attach(ifnet_t *ifp)
 	(void)pfil_run_hooks(if_pfil,
 	    (struct mbuf **)PFIL_IFNET_ATTACH, ifp, PFIL_IFNET);
 
+	if_getindex(ifp);
+}
+
+void
+if_attach(ifnet_t *ifp)
+{
+	if (ifioctl_attach(ifp) != 0)
+		panic("%s: ifioctl_attach() failed", __func__);
+
+	sysctl_sndq_setup(&ifp->if_sysctl_log, ifp->if_xname, &ifp->if_snd);
+
 	if (!STAILQ_EMPTY(&domains))
 		if_attachdomain1(ifp);
 
@@ -645,6 +648,11 @@ if_attach(ifnet_t *ifp)
 		callout_setfunc(ifp->if_slowtimo_ch, if_slowtimo, ifp);
 		if_slowtimo(ifp);
 	}
+
+	if (ifioctl_attach(ifp) != 0)
+		panic("%s: ifioctl_attach() failed", __func__);
+
+	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
 }
 
 void
@@ -744,6 +752,11 @@ if_detach(struct ifnet *ifp)
 
 	s = splnet();
 
+	ifindex2ifnet[ifp->if_index] = NULL;
+	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
+
+	sysctl_teardown(&ifp->if_sysctl_log);
+
 	if (ifp->if_slowtimo != NULL) {
 		callout_halt(ifp->if_slowtimo_ch, NULL);
 		callout_destroy(ifp->if_slowtimo_ch);
@@ -764,8 +777,6 @@ if_detach(struct ifnet *ifp)
 
 	if (ifp->if_snd.ifq_lock)
 		mutex_obj_free(ifp->if_snd.ifq_lock);
-
-	sysctl_teardown(&ifp->if_sysctl_log);
 
 #if NCARP > 0
 	/* Remove the interface from any carp group it is a part of.  */
@@ -876,10 +887,6 @@ again:
 
 	/* Announce that the interface is gone. */
 	rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
-
-	ifindex2ifnet[ifp->if_index] = NULL;
-
-	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
 
 	ifioctl_detach(ifp);
 
