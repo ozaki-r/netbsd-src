@@ -126,6 +126,7 @@ struct virtio_softc {
 
 	int			sc_ipl; /* set by child */
 	void			*sc_ih;
+	void			*sc_soft_ih;
 
 	int			sc_flags; /* set by child */
 
@@ -149,6 +150,7 @@ struct virtio_softc {
 };
 
 #define VIRTIO_F_PCI_INTR_MPSAFE	(1 << 0)
+#define VIRTIO_F_PCI_INTR_SOFTINT	(1 << 1)
 
 /* public interface */
 uint32_t virtio_negotiate_features(struct virtio_softc*, uint32_t);
