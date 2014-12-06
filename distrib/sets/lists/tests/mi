@@ -3126,6 +3126,7 @@
 ./usr/tests/net/if/Atffile			tests-net-tests		atf,rump
 ./usr/tests/net/if/Kyuafile			tests-net-tests		atf,rump,kyua
 ./usr/tests/net/if/t_compat		tests-net-tests		atf,rump
+./usr/tests/net/if/t_ifconf		tests-net-tests		atf,rump
 ./usr/tests/net/if_bridge			tests-net-tests
 ./usr/tests/net/if_bridge/Atffile		tests-net-tests		atf,rump
 ./usr/tests/net/if_bridge/Kyuafile		tests-net-tests		atf,rump,kyua
