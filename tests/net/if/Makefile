@@ -8,6 +8,10 @@ TESTSDIR=	${TESTSBASE}/net/if
 TESTS_C=	t_compat
 TESTS_SH=	t_ifconf
 
+PROGS=		ifconf
+MAN.ifconf=	# empty
+BINDIR.ifconf=	${TESTSDIR}
+
 LDADD+=		-lrumpnet_shmif -lrumpnet_netinet -lrumpnet_net -lrumpnet -lrump
 LDADD+=		-lrumpuser -lrump -lpthread
 

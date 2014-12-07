@@ -30,37 +30,39 @@ RUMP_SERVER1=unix://./r1
 RUMP_FLAGS=\
 "-lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_shmif"
 
-atf_test_case ifconf cleanup
-ifconf_head()
+atf_test_case basic cleanup
+basic_head()
 {
 
-	atf_set "descr" "ifconf (SIOCGIFCONF) test"
+	atf_set "descr" "basic ifconf (SIOCGIFCONF) test"
 	atf_set "require.progs" "rump_server"
 }
 
-ifconf_body()
+basic_body()
 {
+	local ifconf="$(atf_get_srcdir)/ifconf"
 
 	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${RUMP_SERVER1}
 
 	export RUMP_SERVER=${RUMP_SERVER1}
 
 	# No interface
-	atf_check -s exit:0 rump.ifconfig
+	atf_check -s exit:0 -o ignore "$ifconf" 1
 
 	# One interface
 	atf_check -s exit:0 rump.ifconfig shmif0 create
 	atf_check -s exit:0 rump.ifconfig shmif0 linkstr ./shdom3
-	atf_check -s exit:0 rump.ifconfig
+	atf_check -s exit:0 -o ignore "$ifconf" 1
 
 	# Two interfaces
 	atf_check -s exit:0 rump.ifconfig shmif1 create
 	atf_check -s exit:0 rump.ifconfig shmif1 linkstr ./shdom3
-	atf_check -s exit:0 rump.ifconfig
+	atf_check -s exit:0 -o ignore "$ifconf" 2
+
 	unset RUMP_SERVER
 }
 
-ifconf_cleanup()
+basic_cleanup()
 {
 
 	RUMP_SERVER=${RUMP_SERVER1} rump.halt
@@ -69,5 +71,5 @@ ifconf_cleanup()
 atf_init_test_cases()
 { 
 
-	atf_add_test_case ifconf
+	atf_add_test_case basic
 } 
