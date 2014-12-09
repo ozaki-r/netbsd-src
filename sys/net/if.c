@@ -585,7 +585,7 @@ skip:
  * Attach an interface to the list of "active" interfaces.
  */
 void
-if_init(ifnet_t *ifp)
+if_initialize(ifnet_t *ifp)
 {
 	KASSERT(if_indexlim > 0);
 	TAILQ_INIT(&ifp->if_addrlist);
@@ -628,7 +628,7 @@ if_init(ifnet_t *ifp)
 }
 
 void
-if_attach(ifnet_t *ifp)
+if_register(ifnet_t *ifp)
 {
 	if (ifioctl_attach(ifp) != 0)
 		panic("%s: ifioctl_attach() failed", __func__);
@@ -653,6 +653,13 @@ if_attach(ifnet_t *ifp)
 		panic("%s: ifioctl_attach() failed", __func__);
 
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
+}
+
+void
+if_attach(ifnet_t *ifp)
+{
+	if_initialize(ifp);
+	if_register(ifp);
 }
 
 void
