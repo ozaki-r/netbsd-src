@@ -582,7 +582,15 @@ skip:
 }
 
 /*
- * Attach an interface to the list of "active" interfaces.
+ * Initialize an interface and assign an index for it.
+ *
+ * It must be called prior to a device specific attach routine
+ * (e.g., ether_ifattach and ieee80211_ifattach) or if_alloc_sadl,
+ * and be followed by if_register:
+ *
+ *     if_initialize(ifp);
+ *     ether_ifattach(ifp, enaddr);
+ *     if_register(ifp);
  */
 void
 if_initialize(ifnet_t *ifp)
@@ -627,6 +635,9 @@ if_initialize(ifnet_t *ifp)
 	if_getindex(ifp);
 }
 
+/*
+ * Register an interface to the list of "active" interfaces.
+ */
 void
 if_register(ifnet_t *ifp)
 {
@@ -655,6 +666,10 @@ if_register(ifnet_t *ifp)
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
 }
 
+/*
+ * Deprecated. Use if_initialize and if_register instead.
+ * See the above comment of if_initialize.
+ */
 void
 if_attach(ifnet_t *ifp)
 {
