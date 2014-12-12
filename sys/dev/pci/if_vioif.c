@@ -1093,6 +1093,9 @@ vioif_tx_vq_done_locked(struct virtqueue *vq)
 	struct mbuf *m;
 	int r = 0;
 	int slot, len;
+	static int last_deq = 0;
+	//static int last_deq_output = 0;
+	static unsigned last_deq_counter = 0;
 
 	KASSERT(VIOIF_TX_LOCKED(sc));
 
@@ -1114,6 +1117,16 @@ vioif_tx_vq_done_locked(struct virtqueue *vq)
 
 	if (r)
 		ifp->if_flags &= ~IFF_OACTIVE;
+
+	if (r != last_deq) {
+		last_deq = r;
+		last_deq_counter++;
+		//if (abs(last_deq - last_deq_output) > 50) {
+		if ((last_deq_counter % 1000) == 0) {
+			aprint_normal("last_deq=%d\n", last_deq);
+			//last_deq_output = last_deq;
+		}
+	}
 	return r;
 }
 
