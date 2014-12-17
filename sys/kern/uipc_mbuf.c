@@ -554,6 +554,13 @@ m_reclaim(void *arg, int flags)
 			if (pr->pr_drain)
 				(*pr->pr_drain)();
 	}
+	/*
+	 * It works for now because it's running in KERNEL_LOCK
+	 * && splvm and callbacks of if_drain (actually there is
+	 * only ieee1394_drain) don't sleep and block. However,
+	 * when we get rid of KERNEL_LOCK, we would need some
+	 * work.
+	 */
 	IFNET_FOREACH(ifp) {
 		if (ifp->if_drain)
 			(*ifp->if_drain)(ifp);
