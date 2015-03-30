@@ -317,6 +317,7 @@
 ./usr/tests/net/if_bridge
 ./usr/tests/net/if_loop
 ./usr/tests/net/in_cksum
+./usr/tests/net/ipsec
 ./usr/tests/net/mcast
 ./usr/tests/net/mpls
 ./usr/tests/net/net

@@ -3147,6 +3147,10 @@
 ./usr/tests/net/in_cksum/Kyuafile		tests-net-tests		atf,kyua
 ./usr/tests/net/in_cksum/t_in_cksum		tests-net-tests		atf
 ./usr/tests/net/in_cksum/in_cksum		tests-net-tests		atf
+./usr/tests/net/ipsec				tests-net-tests
+./usr/tests/net/ipsec/Atffile			tests-net-tests		atf,rump
+./usr/tests/net/ipsec/Kyuafile			tests-net-tests		atf,rump,kyua
+./usr/tests/net/ipsec/t_ipsec			tests-net-tests		atf,rump
 ./usr/tests/net/mcast				tests-net-tests
 ./usr/tests/net/mcast/Atffile			tests-net-tests		atf
 ./usr/tests/net/mcast/Kyuafile			tests-net-tests		atf,kyua
