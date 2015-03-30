@@ -709,6 +709,9 @@
 ./usr/lib/librumpnet_netinet6.so			base-rump-shlib	rump
 ./usr/lib/librumpnet_netinet6.so.0		base-rump-shlib	rump
 ./usr/lib/librumpnet_netinet6.so.0.0		base-rump-shlib	rump
+./usr/lib/librumpnet_netipsec.so		base-rump-shlib	rump
+./usr/lib/librumpnet_netipsec.so.0		base-rump-shlib	rump
+./usr/lib/librumpnet_netipsec.so.0.0		base-rump-shlib	rump
 ./usr/lib/librumpnet_netmpls.so			base-rump-shlib	rump
 ./usr/lib/librumpnet_netmpls.so.0		base-rump-shlib	rump
 ./usr/lib/librumpnet_netmpls.so.0.0		base-rump-shlib	rump

@@ -9,6 +9,7 @@ LIB=		rumpnet
 	${RUMPTOP}/../netatalk					\
 	${RUMPTOP}/../netinet					\
 	${RUMPTOP}/../netinet6					\
+	${RUMPTOP}/../netipsec					\
 	${RUMPTOP}/../compat/common
 
 SRCS=	net_stub.c netisr.c rump_net.c

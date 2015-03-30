@@ -4,6 +4,7 @@
 .PATH:	${.CURDIR}/../../../../netinet
 
 CPPFLAGS+=	-DINET
+CPPFLAGS+=	-DIPSEC
 
 # INET
 SRCS+=	in_proto.c igmp.c in.c in_offload.c in_pcb.c ip_carp.c ip_icmp.c\
@@ -19,6 +20,9 @@ SRCS+=	tcp_congctl.c tcp_input.c tcp_output.c tcp_sack.c tcp_subr.c \
 
 # UDP
 SRCS+=	udp_usrreq.c
+
+# IPSEC
+SRCS+=	ip_ecn.c
 
 CPPFLAGS+=	-I${.CURDIR}/opt -I${.CURDIR}/../libnet/opt
 

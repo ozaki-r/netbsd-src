@@ -4,6 +4,7 @@
 .PATH:	${.CURDIR}/../../../../netinet6
 
 CPPFLAGS+=	-DINET6
+CPPFLAGS+=	-DIPSEC
 
 # INET6
 SRCS+=	dest6.c frag6.c icmp6.c in6.c in6_cksum.c in6_ifattach.c	\

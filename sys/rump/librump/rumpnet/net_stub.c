@@ -35,6 +35,10 @@ __KERNEL_RCSID(0, "$NetBSD: net_stub.c,v 1.21 2014/12/02 14:34:19 ozaki-r Exp $"
 #include <net/if.h>
 #include <net/route.h>
 
+#include <netipsec/ipsec.h>
+#include <netipsec/ipsec6.h>
+#include <netipsec/key.h>
+
 #include <compat/sys/socket.h>
 #include <compat/sys/sockio.h>
 
@@ -59,6 +63,20 @@ __weak_alias(bridge_output,rumpnet_stub);
 __weak_alias(agr_input,rumpnet_stub);
 __weak_alias(ieee8023ad_lacp_input,rumpnet_stub);
 __weak_alias(ieee8023ad_marker_input,rumpnet_stub);
+
+/* ipsec */
+int ipsec_debug;
+int ipsec_enabled;
+int ipsec_used;
+percpu_t *ipsecstat_percpu;
+u_int ipsec_spdgen;
+__weak_alias(ipsec_getpolicy,rumpnet_stub);
+__weak_alias(ipsec_getpolicybyaddr,rumpnet_stub);
+__weak_alias(ipsec_in_reject,rumpnet_stub);
+__weak_alias(ipsec4_common_input,rumpnet_stub);
+__weak_alias(ipsec4_forward,rumpnet_stub);
+__weak_alias(ipsec4_input,rumpnet_stub);
+__weak_alias(ipsec6_common_input,rumpnet_stub);
 
 struct ifnet_head ifnet_list;
 

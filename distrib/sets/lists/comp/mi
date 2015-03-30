@@ -3903,6 +3903,8 @@
 ./usr/lib/librumpnet_netinet6.a			comp-c-lib		rump
 ./usr/lib/librumpnet_netinet6_p.a		comp-c-proflib		profile,rump
 ./usr/lib/librumpnet_netinet_p.a		comp-c-proflib		profile,rump
+./usr/lib/librumpnet_netipsec.a			comp-c-lib		rump
+./usr/lib/librumpnet_netipsec_p.a		comp-c-proflib		profile,rump
 ./usr/lib/librumpnet_netmpls.a			comp-c-lib		rump
 ./usr/lib/librumpnet_netmpls_p.a		comp-c-proflib		profile,rump
 ./usr/lib/librumpnet_npf.a			comp-c-lib		rump
