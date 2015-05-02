@@ -96,6 +96,11 @@
 #define VIRTIO_CONFIG_CONFIG_VECTOR	20 /* 16bit, optional */
 #define VIRTIO_CONFIG_DEVICE_CONFIG_NOMSI	20
 #define VIRTIO_CONFIG_DEVICE_CONFIG_MSI		24
+/* MSI/MSI-X */
+#define VIRTIO_CONFIG_MSI_CONFIG_VECTOR		20
+#define VIRTIO_CONFIG_MSI_QUEUE_VECTOR		22
+
+#define VIRTIO_MSI_NO_VECTOR			0xffff
 
 /* Virtqueue */
 /* This marks a buffer as continuing via the next field. */

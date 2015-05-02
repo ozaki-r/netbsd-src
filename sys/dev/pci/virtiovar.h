@@ -118,6 +118,11 @@ struct virtqueue {
 	int			(*vq_done)(struct virtqueue*);
 };
 
+enum virtio_intr_type {
+	VIRTIO_INTR_INTX,
+	VIRTIO_INTR_MSIX
+};
+
 struct virtio_softc {
 	device_t		sc_dev;
 	pci_chipset_tag_t	sc_pc;
@@ -125,7 +130,13 @@ struct virtio_softc {
 	bus_dma_tag_t		sc_dmat;
 
 	int			sc_ipl; /* set by child */
+#ifdef __HAVE_PCI_MSI_MSIX
+	pci_intr_handle_t	*sc_ihp;
+	void			**sc_ihs;
+	int			sc_ihs_num;
+#else
 	void			*sc_ih;
+#endif
 	void			*sc_soft_ih;
 
 	int			sc_flags; /* set by child */
@@ -151,6 +162,7 @@ struct virtio_softc {
 
 #define VIRTIO_F_PCI_INTR_MPSAFE	(1 << 0)
 #define VIRTIO_F_PCI_INTR_SOFTINT	(1 << 1)
+#define VIRTIO_F_PCI_INTR_MSIX		(1 << 2)
 
 /* public interface */
 uint32_t virtio_negotiate_features(struct virtio_softc*, uint32_t);
