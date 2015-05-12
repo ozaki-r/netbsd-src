@@ -167,7 +167,7 @@ virtio_setup_msix_interrupts(struct virtio_softc *sc,
 	if (sc->sc_flags & VIRTIO_F_PCI_INTR_MPSAFE)
 		pci_intr_setattr(pc, &sc->sc_ihp[idx], PCI_INTR_MPSAFE, true);
 
-	sc->sc_ihs[idx] = pci_msix_establish(pc, sc->sc_ihp[idx], IPL_NET,
+	sc->sc_ihs[idx] = pci_intr_establish(pc, sc->sc_ihp[idx], IPL_NET,
 	    virtio_msix_config_intr, sc);
 	if (sc->sc_ihs[idx] == NULL) {
 		aprint_error_dev(self, "couldn't establish MSI-X for config\n");
@@ -178,7 +178,7 @@ virtio_setup_msix_interrupts(struct virtio_softc *sc,
 	if (sc->sc_flags & VIRTIO_F_PCI_INTR_MPSAFE)
 		pci_intr_setattr(pc, &sc->sc_ihp[idx], PCI_INTR_MPSAFE, true);
 
-	sc->sc_ihs[idx] = pci_msix_establish(pc, sc->sc_ihp[idx], IPL_NET,
+	sc->sc_ihs[idx] = pci_intr_establish(pc, sc->sc_ihp[idx], IPL_NET,
 	    virtio_msix_queue_intr, sc);
 	if (sc->sc_ihs[idx] == NULL) {
 		aprint_error_dev(self, "couldn't establish MSI-X for queues\n");
@@ -202,10 +202,10 @@ virtio_setup_msix_interrupts(struct virtio_softc *sc,
 error:
 	idx = VIRTIO_MSIX_CONFIG_VECTOR_INDEX;
 	if (sc->sc_ihs[idx] != NULL)
-		pci_msix_disestablish(sc->sc_pc, sc->sc_ihs[idx]);
+		pci_intr_disestablish(sc->sc_pc, sc->sc_ihs[idx]);
 	idx = VIRTIO_MSIX_QUEUE_VECTOR_INDEX;
 	if (sc->sc_ihs[idx] != NULL)
-		pci_msix_disestablish(sc->sc_pc, sc->sc_ihs[idx]);
+		pci_intr_disestablish(sc->sc_pc, sc->sc_ihs[idx]);
 
 	return -1;
 }
@@ -259,14 +259,14 @@ virtio_setup_interrupts(struct virtio_softc *sc, struct pci_attach_args *pa)
 	sc->sc_ihs = kmem_alloc(sizeof(*sc->sc_ihs) * 2,
 	    KM_NOSLEEP);
 	if (sc->sc_ihs == NULL) {
-		pci_msix_release(pc, &sc->sc_ihp, 2);
+		pci_intr_release(pc, &sc->sc_ihp, 2);
 		goto intx;
 	}
 
 	error = virtio_setup_msix_interrupts(sc, pa);
 	if (error != 0) {
 		kmem_free(sc->sc_ihs, sizeof(*sc->sc_ihs) * 2);
-		pci_msix_release(pc, &sc->sc_ihp, 2);
+		pci_intr_release(pc, &sc->sc_ihp, 2);
 		goto intx;
 	}
 
@@ -285,14 +285,14 @@ intx:
 	sc->sc_ihs = kmem_alloc(sizeof(*sc->sc_ihs) * 1,
 	    KM_NOSLEEP);
 	if (sc->sc_ihs == NULL) {
-		pci_intx_release(pc, &sc->sc_ihp[0]);
+		pci_intr_release(pc, &sc->sc_ihp, 1);
 		goto intx;
 	}
 
 	error = virtio_setup_intx_interrupt(sc, pa);
 	if (error != 0) {
 		kmem_free(sc->sc_ihs, sizeof(*sc->sc_ihs) * 1);
-		pci_intx_release(pc, &sc->sc_ihp[0]);
+		pci_intr_release(pc, &sc->sc_ihp, 1);
 		return -1;
 	}
 
@@ -444,21 +444,9 @@ virtio_detach(device_t self, int flags)
 	for (i = 0; i < sc->sc_ihs_num; i++) {
 		if (sc->sc_ihs[i] == NULL)
 			continue;
-		switch (sc->sc_intr_type) {
-		case VIRTIO_INTR_MSIX:
-			pci_msix_disestablish(sc->sc_pc, sc->sc_ihs[i]);
-			pci_msix_release(sc->sc_pc, &sc->sc_ihp, 2);
-			break;
-		case VIRTIO_INTR_INTX:
-			pci_intr_disestablish(sc->sc_pc, sc->sc_ihs[i]);
-			pci_intx_release(sc->sc_pc, &sc->sc_ihp[0]);
-			break;
-		default:
-			panic("Unknown interrupt type: %d\n",
-			    sc->sc_intr_type);
-			break;
-		}
+		pci_intr_disestablish(sc->sc_pc, sc->sc_ihs[i]);
 	}
+	pci_intr_release(sc->sc_pc, &sc->sc_ihp, sc->sc_ihs_num);
 	kmem_free(sc->sc_ihs, sizeof(*sc->sc_ihs) * sc->sc_ihs_num);
 	sc->sc_ihs_num = 0;
 #else
