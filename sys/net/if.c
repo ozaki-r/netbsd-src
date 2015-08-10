@@ -615,6 +615,8 @@ if_initialize(ifnet_t *ifp)
 	(void)pfil_run_hooks(if_pfil,
 	    (struct mbuf **)PFIL_IFNET_ATTACH, ifp, PFIL_IFNET);
 
+	IF_AFDATA_LOCK_INIT(ifp);
+
 	if_getindex(ifp);
 }
 

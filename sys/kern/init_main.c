@@ -228,6 +228,7 @@ extern void *_binary_splash_image_end;
 #include <net/bpf.h>
 #include <net/if.h>
 #include <net/raw_cb.h>
+#include <net/if_llatbl.h>
 
 #include <prop/proplib.h>
 
@@ -565,6 +566,7 @@ main(void)
 	 */
 	s = splnet();
 	ifinit();
+	lltableinit();
 	domaininit(true);
 	if_attachdomain();
 	splx(s);

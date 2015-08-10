@@ -213,6 +213,7 @@ struct ifnet_lock;
 #include <sys/condvar.h>
 #include <sys/percpu.h>
 #include <sys/callout.h>
+#include <sys/rwlock.h>
 
 struct ifnet_lock {
 	kmutex_t il_lock;	/* Protects the critical section. */
@@ -433,6 +434,27 @@ typedef struct ifnet {
 	"\22UDP6CSUM_Tx"	\
 	"\23TSO6"		\
 	"\24LRO"		\
+
+#define	IF_AFDATA_LOCK_INIT(ifp)	\
+	rw_init(&(ifp)->if_afdata_lock)
+
+#define	IF_AFDATA_WLOCK(ifp)	rw_enter(&(ifp)->if_afdata_lock, RW_WRITER)
+#define	IF_AFDATA_RLOCK(ifp)	rw_enter(&(ifp)->if_afdata_lock, RW_READER)
+#define	IF_AFDATA_WUNLOCK(ifp)	rw_exit(&(ifp)->if_afdata_lock)
+#define	IF_AFDATA_RUNLOCK(ifp)	rw_exit(&(ifp)->if_afdata_lock)
+#define	IF_AFDATA_LOCK(ifp)	IF_AFDATA_WLOCK(ifp)
+#define	IF_AFDATA_UNLOCK(ifp)	IF_AFDATA_WUNLOCK(ifp)
+#define	IF_AFDATA_TRYLOCK(ifp)	rw_tryenter(&(ifp)->if_afdata_lock, RW_WRITER)
+#define	IF_AFDATA_DESTROY(ifp)	rw_destroy(&(ifp)->if_afdata_lock)
+
+#define	IF_AFDATA_LOCK_ASSERT(ifp)	\
+	KASSERT(rw_lock_held(&(ifp)->if_afdata_lock))
+#define	IF_AFDATA_RLOCK_ASSERT(ifp)	\
+	KASSERT(rw_read_held(&(ifp)->if_afdata_lock))
+#define	IF_AFDATA_WLOCK_ASSERT(ifp)	\
+	KASSERT(rw_write_held(&(ifp)->if_afdata_lock))
+#define	IF_AFDATA_UNLOCK_ASSERT(ifp)	\
+	KASSERT(!rw_lock_head(&(ifp)->if_afdata_lock))
 
 #define IFQ_LOCK(_ifq)		if ((_ifq)->ifq_lock) mutex_enter((_ifq)->ifq_lock)
 #define IFQ_UNLOCK(_ifq)	if ((_ifq)->ifq_lock) mutex_exit((_ifq)->ifq_lock)

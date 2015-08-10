@@ -311,7 +311,8 @@ in_getifa(struct ifaddr *ifa, const struct sockaddr *dst0)
 	}
 
 	ifp = ifa->ifa_ifp;
-	isc = (struct in_ifsysctl *)ifp->if_afdata[AF_INET];
+	KASSERT(ifp->if_afdata[AF_INET] != NULL);
+	isc = (struct in_ifsysctl *)ifp->if_afdata[AF_INET]->ii_selsrc;
 	if (isc != NULL && isc->isc_selsrc != NULL &&
 	    isc->isc_selsrc->iss_score_src[0] != NULL)
 		iss = isc->isc_selsrc;
@@ -544,7 +545,7 @@ err:
 }
 
 void *
-in_domifattach(struct ifnet *ifp)
+in_selsrc_domifattach(struct ifnet *ifp)
 {
 	struct in_ifsysctl *isc;
 	struct in_ifselsrc *iss;
@@ -572,7 +573,7 @@ err:
 }
 
 void
-in_domifdetach(struct ifnet *ifp, void *aux)
+in_selsrc_domifdetach(struct ifnet *ifp, void *aux)
 {
 	struct in_ifsysctl *isc;
 	struct in_ifselsrc *iss;

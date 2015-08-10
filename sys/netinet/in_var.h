@@ -204,7 +204,17 @@ extern	const	int	inetctlerrmap[];
 	} \
 	(ia) = ifatoia(ifa); \
 }
-#endif
+
+#include <netinet/in_selsrc.h>
+/*
+ * IPv4 per-interface state.
+ */
+struct in_ifinfo {
+	struct lltable		*ii_llt;	/* ARP state */
+	struct in_ifsysctl	*ii_selsrc;
+};
+
+#endif /* _KERNEL */
 
 /*
  * Internet multicast address structure.  There is one of these for each IP
