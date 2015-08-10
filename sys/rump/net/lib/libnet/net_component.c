@@ -35,6 +35,7 @@ __KERNEL_RCSID(0, "$NetBSD: net_component.c,v 1.3 2015/04/23 07:55:24 pooka Exp 
 #include <sys/protosw.h>
 
 #include <net/if.h>
+#include <net/if_llatbl.h>
 #include <net/route.h>
 
 #include "rump_private.h"
@@ -45,6 +46,7 @@ RUMP_COMPONENT(RUMP_COMPONENT_NET)
 
 	ifinit1();
 	ifinit();
+	lltableinit();
 }
 
 RUMP_COMPONENT(RUMP_COMPONENT_NET_ROUTE)

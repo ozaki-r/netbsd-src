@@ -10,6 +10,7 @@ IOCONF=	NET.ioconf
 SRCS=	if.c if_loop.c route.c rtsock.c raw_usrreq.c			\
 	raw_cb.c if_media.c link_proto.c net_stats.c if_ethersubr.c
 SRCS+=	if_43.c pfil.c
+SRCS+=	if_llatbl.c
 SRCS+=	net_component.c
 
 .include <bsd.init.mk>
