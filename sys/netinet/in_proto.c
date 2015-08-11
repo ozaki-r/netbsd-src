@@ -388,13 +388,8 @@ struct domain inetdomain = {
 	.dom_maxrtkey = sizeof(struct ip_pack4),
 	.dom_if_up = in_if_up,
 	.dom_if_down = in_if_down,
-#ifdef IPSELSRC
 	.dom_ifattach = in_domifattach,
 	.dom_ifdetach = in_domifdetach,
-#else
-	.dom_ifattach = NULL,
-	.dom_ifdetach = NULL,
-#endif
 	.dom_if_link_state_change = in_if_link_state_change,
 	.dom_ifqueues = { NULL, NULL },
 	.dom_link = { NULL },

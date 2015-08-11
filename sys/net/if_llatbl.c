@@ -377,7 +377,6 @@ lltable_free(struct lltable *llt)
 	llt->llt_free_tbl(llt);
 }
 
-#if 0
 void
 lltable_drain(int af)
 {
@@ -403,7 +402,6 @@ lltable_drain(int af)
 	}
 	LLTABLE_RUNLOCK();
 }
-#endif
 
 void
 lltable_prefix_free(int af, struct sockaddr *prefix, struct sockaddr *mask,

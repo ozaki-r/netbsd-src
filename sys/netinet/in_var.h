@@ -323,6 +323,9 @@ ip_newid(const struct in_ifaddr *ia)
 int	sysctl_inpcblist(SYSCTLFN_PROTO);
 #endif
 
+#define LLTABLE(ifp)	\
+	((struct in_ifinfo *)(ifp)->if_afdata[AF_INET])->ii_llt
+
 #endif	/* !_KERNEL */
 
 /* INET6 stuff */

@@ -245,6 +245,7 @@ TAILQ_HEAD(ifnet_head, ifnet);		/* the actual queue head */
 struct bridge_softc;
 struct bridge_iflist;
 struct callout;
+struct krwlock;
 
 typedef struct ifnet {
 	void	*if_softc;		/* lower-level data for this if */
@@ -346,6 +347,7 @@ typedef struct ifnet {
 #ifdef _KERNEL /* XXX kvm(3) */
 	struct callout *if_slowtimo_ch;
 #endif
+	struct krwlock	*if_afdata_lock;
 } ifnet_t;
  
 #define	if_mtu		if_data.ifi_mtu
@@ -436,25 +438,26 @@ typedef struct ifnet {
 	"\24LRO"		\
 
 #define	IF_AFDATA_LOCK_INIT(ifp)	\
-	rw_init(&(ifp)->if_afdata_lock)
+	do {(ifp)->if_afdata_lock = rw_obj_alloc();} while (0)
 
-#define	IF_AFDATA_WLOCK(ifp)	rw_enter(&(ifp)->if_afdata_lock, RW_WRITER)
-#define	IF_AFDATA_RLOCK(ifp)	rw_enter(&(ifp)->if_afdata_lock, RW_READER)
-#define	IF_AFDATA_WUNLOCK(ifp)	rw_exit(&(ifp)->if_afdata_lock)
-#define	IF_AFDATA_RUNLOCK(ifp)	rw_exit(&(ifp)->if_afdata_lock)
+#define	IF_AFDATA_WLOCK(ifp)	rw_enter((ifp)->if_afdata_lock, RW_WRITER)
+#define	IF_AFDATA_RLOCK(ifp)	rw_enter((ifp)->if_afdata_lock, RW_READER)
+#define	IF_AFDATA_WUNLOCK(ifp)	rw_exit((ifp)->if_afdata_lock)
+#define	IF_AFDATA_RUNLOCK(ifp)	rw_exit((ifp)->if_afdata_lock)
 #define	IF_AFDATA_LOCK(ifp)	IF_AFDATA_WLOCK(ifp)
 #define	IF_AFDATA_UNLOCK(ifp)	IF_AFDATA_WUNLOCK(ifp)
-#define	IF_AFDATA_TRYLOCK(ifp)	rw_tryenter(&(ifp)->if_afdata_lock, RW_WRITER)
-#define	IF_AFDATA_DESTROY(ifp)	rw_destroy(&(ifp)->if_afdata_lock)
+#define	IF_AFDATA_TRYLOCK(ifp)	rw_tryenter((ifp)->if_afdata_lock, RW_WRITER)
+#define	IF_AFDATA_DESTROY(ifp)	rw_destroy((ifp)->if_afdata_lock)
 
 #define	IF_AFDATA_LOCK_ASSERT(ifp)	\
-	KASSERT(rw_lock_held(&(ifp)->if_afdata_lock))
+	KASSERT(rw_lock_held((ifp)->if_afdata_lock))
 #define	IF_AFDATA_RLOCK_ASSERT(ifp)	\
-	KASSERT(rw_read_held(&(ifp)->if_afdata_lock))
+	KASSERT(rw_read_held((ifp)->if_afdata_lock))
 #define	IF_AFDATA_WLOCK_ASSERT(ifp)	\
-	KASSERT(rw_write_held(&(ifp)->if_afdata_lock))
+	KASSERT(rw_write_held((ifp)->if_afdata_lock))
 #define	IF_AFDATA_UNLOCK_ASSERT(ifp)	\
-	KASSERT(!rw_lock_head(&(ifp)->if_afdata_lock))
+	KASSERT(!rw_lock_head((ifp)->if_afdata_lock))
+
 
 #define IFQ_LOCK(_ifq)		if ((_ifq)->ifq_lock) mutex_enter((_ifq)->ifq_lock)
 #define IFQ_UNLOCK(_ifq)	if ((_ifq)->ifq_lock) mutex_exit((_ifq)->ifq_lock)

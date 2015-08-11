@@ -127,4 +127,6 @@ struct arpreq {
 
 #define	ARP_NSTATS		23
 
+void arp_stat_add(int, uint64_t);
+
 #endif /* !_NET_IF_ARP_H_ */
