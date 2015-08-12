@@ -315,6 +315,7 @@ rump_init(void)
 	uao_init();
 
 	mutex_obj_init();
+	rw_obj_init();
 	callout_startup();
 
 	kprintf_init();
