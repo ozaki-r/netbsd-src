@@ -141,10 +141,8 @@ __KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.173 2015/08/24 22:21:26 pooka Exp $");
 #define ETHERTYPE_IPTRAILERS ETHERTYPE_TRAIL
 
 /* timer values */
-static int	arpt_prune = (5*60*1);	/* walk list every 5 minutes */
 static int	arpt_keep = (20*60);	/* once resolved, good for 20 more minutes */
 static int	arpt_down = 20;		/* once declared down, don't send for 20 secs */
-static int	arpt_refresh = (5*60);	/* time left before refreshing */
 static int	arp_maxhold = 1;	/* number of packets to hold per ARP entry */
 #define	rt_expire rt_rmx.rmx_expire
 #define	rt_pksent rt_rmx.rmx_pksent
@@ -314,28 +312,6 @@ arp_drain(void)
 }
 
 
-/*
- * Timeout routine.  Age arp_tab entries periodically.
- */
-#if 0
-	LIST_FOREACH_SAFE(la, &llinfo_arp, la_list, nla) {
-		struct rtentry *rt = la->la_rt;
-
-		if (rt->rt_expire == 0)
-			continue;
-		if ((rt->rt_expire - time_uptime) < arpt_refresh &&
-		    rt->rt_pksent > (time_uptime - arpt_keep)) {
-			/*
-			 * If the entry has been used during since last
-			 * refresh, try to renew it before deleting.
-			 */
-			arprequest(rt->rt_ifp,
-			    &satocsin(rt->rt_ifa->ifa_addr)->sin_addr,
-			    &satocsin(rt_getkey(rt))->sin_addr,
-			    CLLADDR(rt->rt_ifp->if_sadl));
-		} else if (rt->rt_expire <= time_uptime)
-			arptfree(la); /* timer has expired; clear */
-#endif
 static void
 arptimer(void *arg)
 {
@@ -2160,13 +2136,6 @@ sysctl_net_inet_arp_setup(struct sysctllog **clog)
 
 	sysctl_createv(clog, 0, NULL, NULL,
 			CTLFLAG_PERMANENT|CTLFLAG_READWRITE,
-			CTLTYPE_INT, "prune",
-			SYSCTL_DESCR("ARP cache pruning interval in seconds"),
-			NULL, 0, &arpt_prune, 0,
-			CTL_NET,PF_INET, node->sysctl_num, CTL_CREATE, CTL_EOL);
-
-	sysctl_createv(clog, 0, NULL, NULL,
-			CTLFLAG_PERMANENT|CTLFLAG_READWRITE,
 			CTLTYPE_INT, "keep",
 			SYSCTL_DESCR("Valid ARP entry lifetime in seconds"),
 			NULL, 0, &arpt_keep, 0,
@@ -2179,13 +2148,6 @@ sysctl_net_inet_arp_setup(struct sysctllog **clog)
 			NULL, 0, &arpt_down, 0,
 			CTL_NET,PF_INET, node->sysctl_num, CTL_CREATE, CTL_EOL);
 
-	sysctl_createv(clog, 0, NULL, NULL,
-			CTLFLAG_PERMANENT|CTLFLAG_READWRITE,
-			CTLTYPE_INT, "refresh",
-			SYSCTL_DESCR("ARP entry refresh interval"),
-			NULL, 0, &arpt_refresh, 0,
-			CTL_NET,PF_INET, node->sysctl_num, CTL_CREATE, CTL_EOL);
-	
 	sysctl_createv(clog, 0, NULL, NULL,
 			CTLFLAG_PERMANENT,
 			CTLTYPE_STRUCT, "stats",
