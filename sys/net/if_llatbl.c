@@ -392,10 +392,7 @@ lltable_drain(int af)
 		for (i=0; i < llt->llt_hsize; i++) {
 			LIST_FOREACH(lle, &llt->lle_head[i], lle_next) {
 				LLE_WLOCK(lle);
-				if (lle->la_hold) {
-					m_freem(lle->la_hold);
-					lle->la_hold = NULL;
-				}
+				lltable_drop_entry_queue(lle);
 				LLE_WUNLOCK(lle);
 			}
 		}
