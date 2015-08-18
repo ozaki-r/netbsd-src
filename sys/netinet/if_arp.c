@@ -605,6 +605,7 @@ arp_rtrequest(int req, struct rtentry *rt, const struct rt_addrinfo *info)
 			break;
 		}
 		la->la_rt = rt;
+		rt->rt_refcnt++;
 		rt->rt_flags |= RTF_LLINFO;
 		arp_inuse++, arp_allocated++;
 
@@ -684,6 +685,14 @@ arp_rtrequest(int req, struct rtentry *rt, const struct rt_addrinfo *info)
 			}
 		}
 
+		if (la->la_rt != NULL) {
+			/*
+			 * Don't rtfree (may actually free objects) here.
+			 * Leave it to rtrequest1.
+			 */
+			la->la_rt->rt_refcnt--;
+			la->la_rt = NULL;
+		}
 		llentry_free(la);
 
 		IF_AFDATA_WUNLOCK(ifp);
@@ -1422,6 +1431,11 @@ static void arptfree(struct llentry *la)
 	struct rtentry *rt = la->la_rt;
 
 	KASSERT(rt != NULL);
+
+	if (la->la_rt != NULL) {
+		rtfree(la->la_rt);
+		la->la_rt = NULL;
+	}
 
 	rtrequest(RTM_DELETE, rt_getkey(rt), NULL, rt_mask(rt), 0, NULL);
 }

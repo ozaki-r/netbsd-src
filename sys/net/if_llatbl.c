@@ -371,6 +371,11 @@ lltable_free(struct lltable *llt)
 	LIST_FOREACH_SAFE(lle, &dchain, lle_chain, next) {
 		if (callout_stop(&lle->la_timer))
 			LLE_REMREF(lle);
+#if __NetBSD__
+		/* XXX should have callback? */
+		if (lle->la_rt != NULL)
+			rtfree(lle->la_rt);
+#endif
 		llentry_free(lle);
 	}
 
