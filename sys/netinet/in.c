@@ -1852,66 +1852,6 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 	return lle;
 }
 
-static int
-in_lltable_dump_entry(struct lltable *llt, struct llentry *lle,
-    struct sysctl_req *wr)
-{
-	struct ifnet *ifp = llt->llt_ifp;
-	/* XXX stack use */
-	struct {
-		struct rt_msghdr	rtm;
-		struct sockaddr_in	sin;
-		struct sockaddr_dl	sdl;
-	} arpc;
-	struct sockaddr_dl *sdl;
-	int error;
-
-	memset(&arpc, 0, sizeof(arpc));
-			/* skip deleted entries */
-			if ((lle->la_flags & LLE_DELETED) == LLE_DELETED)
-				return (0);
-			/* Skip if jailed and not a valid IP of the prison. */
-			lltable_fill_sa_entry(lle,(struct sockaddr *)&arpc.sin);
-			/*
-			 * produce a msg made of:
-			 *  struct rt_msghdr;
-			 *  struct sockaddr_in; (IPv4)
-			 *  struct sockaddr_dl;
-			 */
-			arpc.rtm.rtm_msglen = sizeof(arpc);
-			arpc.rtm.rtm_version = RTM_VERSION;
-			arpc.rtm.rtm_type = RTM_GET;
-			arpc.rtm.rtm_flags = RTF_UP;
-			arpc.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY;
-
-			/* publish */
-			if (lle->la_flags & LLE_PUB)
-				arpc.rtm.rtm_flags |= RTF_ANNOUNCE;
-
-			sdl = &arpc.sdl;
-			sdl->sdl_family = AF_LINK;
-			sdl->sdl_len = sizeof(*sdl);
-			sdl->sdl_index = ifp->if_index;
-			sdl->sdl_type = ifp->if_type;
-			if ((lle->la_flags & LLE_VALID) == LLE_VALID) {
-				sdl->sdl_alen = ifp->if_addrlen;
-				memcpy(LLADDR(sdl), &lle->ll_addr, ifp->if_addrlen);
-			} else {
-				sdl->sdl_alen = 0;
-				memset(LLADDR(sdl), 0, ifp->if_addrlen);
-			}
-
-			arpc.rtm.rtm_rmx.rmx_expire =
-			    lle->la_flags & LLE_STATIC ? 0 : lle->la_expire;
-			arpc.rtm.rtm_flags |= (RTF_HOST | RTF_LLDATA);
-			if (lle->la_flags & LLE_STATIC)
-				arpc.rtm.rtm_flags |= RTF_STATIC;
-			arpc.rtm.rtm_index = ifp->if_index;
-			error = copyout(wr, &arpc, sizeof(arpc));
-
-	return (error);
-}
-
 static void
 in_sysctl_init(struct sysctllog **clog)
 {
@@ -1957,7 +1897,9 @@ in_lltattach(struct ifnet *ifp)
 	llt->llt_lookup = in_lltable_lookup;
 	llt->llt_create = in_lltable_create;
 	llt->llt_delete = in_lltable_delete;
+#if 0
 	llt->llt_dump_entry = in_lltable_dump_entry;
+#endif
 	llt->llt_hash = in_lltable_hash;
 	llt->llt_fill_sa_entry = in_lltable_fill_sa_entry;
 	llt->llt_free_entry = in_lltable_free_entry;
