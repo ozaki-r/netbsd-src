@@ -1554,7 +1554,7 @@ in_lltable_destroy_lle(struct llentry *lle)
 
 	LLE_WUNLOCK(lle);
 	LLE_LOCK_DESTROY(lle);
-	kmem_intr_free(lle, sizeof(struct in_llentry));
+	kmem_intr_free(lle, sizeof(*lle));
 }
 
 static struct llentry *
@@ -1562,7 +1562,7 @@ in_lltable_new(struct in_addr addr4, u_int flags)
 {
 	struct in_llentry *lle;
 
-	lle = kmem_intr_zalloc(sizeof(struct in_llentry), KM_NOSLEEP);
+	lle = kmem_intr_zalloc(sizeof(*lle), KM_NOSLEEP);
 	if (lle == NULL)		/* NB: caller generates msg */
 		return NULL;
 
@@ -1930,7 +1930,7 @@ in_domifattach(struct ifnet *ifp)
 void
 in_domifdetach(struct ifnet *ifp, void *aux)
 {
-	struct in_ifinfo *ii = (struct in_ifinfo *)aux;
+	struct in_ifinfo *ii = aux;
 
 #ifdef IPSELSRC
 	in_selsrc_domifdetach(ifp, ii->ii_selsrc);
