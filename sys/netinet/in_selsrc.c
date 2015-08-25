@@ -312,7 +312,7 @@ in_getifa(struct ifaddr *ifa, const struct sockaddr *dst0)
 
 	ifp = ifa->ifa_ifp;
 	KASSERT(ifp->if_afdata[AF_INET] != NULL);
-	isc = (struct in_ifsysctl *)ifp->if_afdata[AF_INET]->ii_selsrc;
+	isc = ifp->if_afdata[AF_INET]->ii_selsrc;
 	if (isc != NULL && isc->isc_selsrc != NULL &&
 	    isc->isc_selsrc->iss_score_src[0] != NULL)
 		iss = isc->isc_selsrc;
