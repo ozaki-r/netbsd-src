@@ -307,10 +307,8 @@ void
 arp_drain(void)
 {
 
-	/* XXX not tested */
 	lltable_drain(AF_INET);
 }
-
 
 static void
 arptimer(void *arg)
