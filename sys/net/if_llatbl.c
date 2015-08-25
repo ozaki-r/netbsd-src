@@ -29,9 +29,11 @@
  */
 #include <sys/cdefs.h>
 
+#ifdef _KERNEL_OPT
 #include "opt_ddb.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
