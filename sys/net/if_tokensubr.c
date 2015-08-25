@@ -221,10 +221,10 @@ token_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 			struct llentry *la;
 			if (!arpresolve(ifp, rt, m, dst, edst))
 				return (0);	/* if not yet resolved */
-			la = (struct llentry *)rt->rt_llinfo;
+			la = rt->rt_llinfo;
 			KASSERT(la != NULL);
 			KASSERT(la->la_opaque != NULL);
-			rif = (struct token_rif *)la->la_opaque;
+			rif = la->la_opaque;
 			riflen = (ntohs(rif->tr_rcf) & TOKEN_RCF_LEN_MASK) >> 8;
 		}
 		/* If broadcasting on a simplex interface, loopback a copy. */

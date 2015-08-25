@@ -315,7 +315,7 @@ arp_drain(void)
 static void
 arptimer(void *arg)
 {
-	struct llentry *lle = (struct llentry *)arg;
+	struct llentry *lle = arg;
 	struct ifnet *ifp;
 
 	mutex_enter(softnet_lock);
