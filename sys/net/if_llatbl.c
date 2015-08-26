@@ -207,7 +207,7 @@ htable_prefix_free(struct lltable *llt, const struct sockaddr *prefix,
 	struct llentry *lle, *next;
 	struct prefix_match_data pmd;
 
-	bzero(&pmd, sizeof(pmd));
+	memset(&pmd, 0, sizeof(pmd));
 	pmd.prefix = prefix;
 	pmd.mask = mask;
 	pmd.flags = flags;
@@ -649,7 +649,7 @@ llatbl_lle_show(struct llentry_sa *la)
 	db_printf(" ln_router=%u\n", lle->ln_router);
 	db_printf(" ln_ntick=%ju\n", (uintmax_t)lle->ln_ntick);
 	db_printf(" lle_refcnt=%d\n", lle->lle_refcnt);
-	bcopy(&lle->ll_addr.mac16, octet, sizeof(octet));
+	memcopy(octet, &lle->ll_addr.mac16, sizeof(octet));
 	db_printf(" ll_addr=%02x:%02x:%02x:%02x:%02x:%02x\n",
 	    octet[0], octet[1], octet[2], octet[3], octet[4], octet[5]);
 	db_printf(" lle_timer=%p\n", &lle->lle_timer);

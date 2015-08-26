@@ -1719,7 +1719,7 @@ in_lltable_fill_sa_entry(const struct llentry *lle, struct sockaddr *sa)
 	struct sockaddr_in *sin;
 
 	sin = (struct sockaddr_in *)sa;
-	bzero(sin, sizeof(*sin));
+	memset(sin, 0, sizeof(*sin));
 	sin->sin_family = AF_INET;
 	sin->sin_len = sizeof(*sin);
 	sin->sin_addr = lle->r_l3addr.addr4;
