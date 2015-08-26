@@ -529,7 +529,7 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 	struct ifnet *ifp;
 	struct lltable *llt;
 	struct llentry *lle;
-	u_int laflags = 0;
+	u_int laflags;
 	int error;
 
 	KASSERTMSG(dl != NULL && dl->sdl_family == AF_LINK, "invalid dl");
