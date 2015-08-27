@@ -801,7 +801,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt, struct mbuf *m,
 		m_freem(m);
 		if (la != NULL)
 			LLE_RUNLOCK(la);
-		return ENOMEM;
+		return 0;
 	}
 	sdl = satocsdl(rt->rt_gateway);
 	/*
@@ -814,7 +814,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt, struct mbuf *m,
 		    min(sdl->sdl_alen, ifp->if_addrlen));
 		rt->rt_pksent = time_uptime; /* Time for last pkt sent */
 		LLE_RUNLOCK(la);
-		return 0;
+		return 1;
 	}
 
 	/*
@@ -858,7 +858,7 @@ retry:
 			    ifp->if_xname);
 		}
 		m_freem(m);
-		return EINVAL;
+		return 0;
 	}
 
 	if ((la->la_flags & LLE_VALID) &&
@@ -893,7 +893,7 @@ retry:
 			    &satocsin(dst)->sin_addr, enaddr);
 		}
 
-		return 0;
+		return 1;
 	}
 
 	if (la->la_flags & LLE_STATIC) {   /* should not happen! */
@@ -972,14 +972,14 @@ retry:
 			LLE_RUNLOCK(la);
 		arprequest(ifp, &satocsin(rt->rt_ifa->ifa_addr)->sin_addr,
 		    &satocsin(dst)->sin_addr, enaddr);
-		return error;
+		return error == 0;
 	}
 done:
 	if (flags & LLE_EXCLUSIVE)
 		LLE_WUNLOCK(la);
 	else
 		LLE_RUNLOCK(la);
-	return error;
+	return error == 0;
 }
 
 /*
