@@ -181,7 +181,7 @@ srt_if_output(
 	struct ifnet *ifp,
 	struct mbuf *m,
 	const struct sockaddr *to,
-	struct rtentry *rtp)
+	const struct rtentry *rtp)
 {
 	struct srt_softc *sc;
 	struct srt_rt *r;

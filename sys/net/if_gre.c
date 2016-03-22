@@ -152,7 +152,7 @@ static int gre_input(struct gre_softc *, struct mbuf *, int,
     const struct gre_h *);
 static bool gre_is_nullconf(const struct gre_soparm *);
 static int gre_output(struct ifnet *, struct mbuf *,
-			   const struct sockaddr *, struct rtentry *);
+			   const struct sockaddr *, const struct rtentry *);
 static int gre_ioctl(struct ifnet *, u_long, void *);
 static int gre_getsockname(struct socket *, struct sockaddr *);
 static int gre_getpeername(struct socket *, struct sockaddr *);
@@ -878,7 +878,7 @@ gre_input(struct gre_softc *sc, struct mbuf *m, int hlen,
  */
 static int
 gre_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-	   struct rtentry *rt)
+	   const struct rtentry *rt)
 {
 	int error = 0;
 	struct gre_softc *sc = ifp->if_softc;

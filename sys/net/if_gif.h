@@ -73,7 +73,7 @@ struct gif_softc {
 void	gifattach0(struct gif_softc *);
 void	gif_input(struct mbuf *, int, struct ifnet *);
 int	gif_output(struct ifnet *, struct mbuf *,
-		   const struct sockaddr *, struct rtentry *);
+		   const struct sockaddr *, const struct rtentry *);
 int	gif_ioctl(struct ifnet *, u_long, void *);
 int	gif_set_tunnel(struct ifnet *, struct sockaddr *, struct sockaddr *);
 void	gif_delete_tunnel(struct ifnet *);

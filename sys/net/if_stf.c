@@ -168,7 +168,7 @@ static const struct encapsw in_stf_encapsw =
 static int stf_encapcheck(struct mbuf *, int, int, void *);
 static struct in6_ifaddr *stf_getsrcifa6(struct ifnet *);
 static int stf_output(struct ifnet *, struct mbuf *, const struct sockaddr *,
-	struct rtentry *);
+	const struct rtentry *);
 static int isrfc1918addr(const struct in_addr *);
 static int stf_checkaddr4(struct stf_softc *, const struct in_addr *,
 	struct ifnet *);
@@ -325,7 +325,7 @@ stf_getsrcifa6(struct ifnet *ifp)
 
 static int
 stf_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt0)
+    const struct rtentry *rt0)
 {
 	struct rtentry *rt;
 	struct stf_softc *sc;

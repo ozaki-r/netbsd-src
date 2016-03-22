@@ -87,7 +87,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_pflog.c,v 1.19 2015/08/20 14:40:18 christos Exp $
 void	pflogdetach(void);
 #endif /* _MODULE */
 int	pflogoutput(struct ifnet *, struct mbuf *, const struct sockaddr *,
-	    	       struct rtentry *);
+	    const struct rtentry *);
 int	pflogioctl(struct ifnet *, u_long, void *);
 void	pflogstart(struct ifnet *);
 int	pflog_clone_create(struct if_clone *, int);
@@ -208,7 +208,7 @@ pflogstart(struct ifnet *ifp)
 
 int
 pflogoutput(struct ifnet *ifp, struct mbuf *m,
-    const struct sockaddr *dst, struct rtentry *rt)
+    const struct sockaddr *dst, const struct rtentry *rt)
 {
 	m_freem(m);
 	return (0);

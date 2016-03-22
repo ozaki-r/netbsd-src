@@ -160,7 +160,7 @@ static	void sca_port_up(sca_port_t *);
 static	void sca_port_down(sca_port_t *);
 
 static	int sca_output(struct ifnet *, struct mbuf *, const struct sockaddr *,
-			    struct rtentry *);
+			    const struct rtentry *);
 static	int sca_ioctl(struct ifnet *, u_long, void *);
 static	void sca_start(struct ifnet *);
 static	void sca_watchdog(struct ifnet *);
@@ -792,7 +792,7 @@ sca_output(
     struct ifnet *ifp,
     struct mbuf *m,
     const struct sockaddr *dst,
-    struct rtentry *rt0)
+    const struct rtentry *rt0)
 {
 	struct hdlc_header *hdlc;
 	struct ifqueue *ifq = NULL;

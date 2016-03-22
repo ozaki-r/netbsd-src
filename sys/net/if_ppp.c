@@ -839,7 +839,7 @@ pppsioctl(struct ifnet *ifp, u_long cmd, void *data)
  */
 int
 pppoutput(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
-    struct rtentry *rtp)
+    const struct rtentry *rtp)
 {
 	struct ppp_softc *sc = ifp->if_softc;
 	int protocol, address, control;

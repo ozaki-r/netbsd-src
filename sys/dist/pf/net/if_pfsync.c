@@ -116,7 +116,7 @@ int	pfsync_alloc_scrub_memory(struct pfsync_state_peer *,
 int	pfsync_insert_net_state(struct pfsync_state *, u_int8_t);
 void	pfsync_update_net_tdb(struct pfsync_tdb *);
 int	pfsyncoutput(struct ifnet *, struct mbuf *, const struct sockaddr *,
-	    struct rtentry *);
+	    const struct rtentry *);
 int	pfsyncioctl(struct ifnet *, u_long, void*);
 void	pfsyncstart(struct ifnet *);
 
@@ -856,7 +856,7 @@ done:
 
 int
 pfsyncoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-	struct rtentry *rt)
+	const struct rtentry *rt)
 {
 	m_freem(m);
 	return (0);

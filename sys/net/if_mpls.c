@@ -89,9 +89,10 @@ static struct if_clone mpls_if_cloner =
 
 static void mpls_input(struct ifnet *, struct mbuf *);
 static int mpls_output(struct ifnet *, struct mbuf *, const struct sockaddr *,
-	struct rtentry *);
+	const struct rtentry *);
 static int mpls_ioctl(struct ifnet *, u_long, void *);
-static int mpls_send_frame(struct mbuf *, struct ifnet *, struct rtentry *);
+static int mpls_send_frame(struct mbuf *, struct ifnet *,
+    const struct rtentry *);
 static int mpls_lse(struct mbuf *);
 
 #ifdef INET
@@ -201,7 +202,8 @@ mplsintr(void)
  * prepend shim and deliver
  */
 static int
-mpls_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, struct rtentry *rt)
+mpls_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
+    const struct rtentry *rt)
 {
 	union mpls_shim mh, *pms;
 	struct rtentry *rt1;
@@ -438,6 +440,12 @@ mpls_lse(struct mbuf *m)
 			return ENOBUFS;
 	}
 
+	if ((rt->rt_flags & RTF_GATEWAY) == 0) {
+		error = EHOSTUNREACH;
+		goto done;
+	}
+
+	rt->rt_use++;
 	error = mpls_send_frame(m, rt->rt_ifp, rt);
 
 done:
@@ -450,15 +458,10 @@ done:
 }
 
 static int
-mpls_send_frame(struct mbuf *m, struct ifnet *ifp, struct rtentry *rt)
+mpls_send_frame(struct mbuf *m, struct ifnet *ifp, const struct rtentry *rt)
 {
 	union mpls_shim msh;
 	int ret;
-
-	if ((rt->rt_flags & RTF_GATEWAY) == 0)
-		return EHOSTUNREACH;
-
-	rt->rt_use++;
 
 	msh.s_addr = MPLS_GETSADDR(rt);
 	if (msh.shim.label == MPLS_LABEL_IMPLNULL ||

@@ -159,7 +159,7 @@ void	ppp_restart(struct ppp_softc *);
 void	ppppktin(struct ppp_softc *, struct mbuf *, int);
 struct	mbuf *ppp_dequeue(struct ppp_softc *);
 int	pppoutput(struct ifnet *, struct mbuf *, const struct sockaddr *,
-	    struct rtentry *);
+	    const struct rtentry *);
 #endif /* _KERNEL */
 
 #endif /* !_NET_IF_PPPVAR_H_ */

@@ -1488,13 +1488,13 @@ rt_settag(struct rtentry *rt, const struct sockaddr *tag)
 }
 
 struct sockaddr *
-rt_gettag(struct rtentry *rt)
+rt_gettag(const struct rtentry *rt)
 {
 	return rt->rt_tag;
 }
 
 int
-rt_check_reject_route(struct rtentry *rt, struct ifnet *ifp)
+rt_check_reject_route(const struct rtentry *rt, const struct ifnet *ifp)
 {
 
 	if ((rt->rt_flags & RTF_REJECT) != 0) {

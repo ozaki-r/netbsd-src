@@ -136,7 +136,7 @@ void	atm_ifattach(struct ifnet *);
 void	atm_input(struct ifnet *, struct atm_pseudohdr *,
 		struct mbuf *, void *);
 int	atm_output(struct ifnet *, struct mbuf *, const struct sockaddr *,
-		struct rtentry *);
+		const struct rtentry *);
 #endif
 #ifdef ATM_PVCEXT
 #ifdef _KERNEL

@@ -79,12 +79,12 @@ __KERNEL_RCSID(0, "$NetBSD: if_ieee1394subr.c,v 1.53 2016/04/20 09:01:04 knakaha
 #define	senderr(e)	do { error = (e); goto bad; } while(0/*CONSTCOND*/)
 
 static int  ieee1394_output(struct ifnet *, struct mbuf *,
-		const struct sockaddr *, struct rtentry *);
+		const struct sockaddr *, const struct rtentry *);
 static struct mbuf *ieee1394_reass(struct ifnet *, struct mbuf *, uint16_t);
 
 static int
 ieee1394_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	uint16_t etype = 0;
 	struct mbuf *m;

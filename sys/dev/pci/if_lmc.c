@@ -3355,7 +3355,7 @@ ifnet_input(struct ifnet *ifp, struct mbuf *mbuf)
  */
 static int  /* context: process */
 ifnet_output(struct ifnet *ifp, struct mbuf *m,
- const struct sockaddr *dst, struct rtentry *rt)
+ const struct sockaddr *dst, const struct rtentry *rt)
   {
   softc_t *sc = IFP2SC(ifp);
   int error = 0;

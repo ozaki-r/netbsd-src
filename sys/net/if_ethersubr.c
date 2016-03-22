@@ -178,7 +178,7 @@ const uint8_t ethermulticastaddr_slowprotocols[ETHER_ADDR_LEN] =
 #define senderr(e) { error = (e); goto bad;}
 
 static	int ether_output(struct ifnet *, struct mbuf *,
-	    const struct sockaddr *, struct rtentry *);
+	    const struct sockaddr *, const struct rtentry *);
 
 /*
  * Ethernet output routine.
@@ -188,7 +188,7 @@ static	int ether_output(struct ifnet *, struct mbuf *,
 static int
 ether_output(struct ifnet * const ifp0, struct mbuf * const m0,
 	const struct sockaddr * const dst,
-	struct rtentry *rt)
+	const struct rtentry *rt)
 {
 	uint16_t etype = 0;
 	int error = 0, hdrcmplt = 0;

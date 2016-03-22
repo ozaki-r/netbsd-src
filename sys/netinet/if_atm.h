@@ -33,7 +33,7 @@
  */
 
 void atm_rtrequest(int, struct rtentry *, const struct rt_addrinfo *);
-int atmresolve(struct rtentry *, struct mbuf *, const struct sockaddr *,
+int atmresolve(const struct rtentry *, struct mbuf *, const struct sockaddr *,
 		struct atm_pseudohdr *);
 
 #endif /* !_NETINET_IF_ATM_H_ */
