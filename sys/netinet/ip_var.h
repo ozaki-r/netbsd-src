@@ -239,7 +239,7 @@ int	ip_setmoptions(struct ip_moptions **, const struct sockopt *sopt);
 int	ip_getmoptions(struct ip_moptions *, struct sockopt *sopt);
 
 int	ip_if_output(struct ifnet * const, struct mbuf * const,
-	    const struct sockaddr * const, struct rtentry *);
+	    const struct sockaddr * const, const struct rtentry *);
 
 /* IP Flow interface. */
 void	ipflow_init(void);

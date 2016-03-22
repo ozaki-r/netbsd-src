@@ -201,18 +201,18 @@ failed:
  */
 
 int
-atmresolve(struct rtentry *rt0, struct mbuf *m, const struct sockaddr *dst,
+atmresolve(const struct rtentry *rt0, struct mbuf *m, const struct sockaddr *dst,
     struct atm_pseudohdr *desten /* OUT */)
 {
 	const struct sockaddr_dl *sdl;
-	struct rtentry *rt = rt0;
+	struct rtentry *rt = NULL;
 
 	if (m->m_flags & (M_BCAST|M_MCAST)) {
 		log(LOG_INFO, "atmresolve: BCAST/MCAST packet detected/dumped\n");
 		goto bad;
 	}
 
-	if (rt == NULL) {
+	if (rt0 == NULL) {
 		rt = RTALLOC1(dst, 0);
 		if (rt == NULL)
 			goto bad; /* failed */
@@ -231,7 +231,7 @@ atmresolve(struct rtentry *rt0, struct mbuf *m, const struct sockaddr *dst,
 	 * ATM ARP [c.f. if_ether.c]).
 	 */
 
-	sdl = satocsdl(rt->rt_gateway);
+	sdl = satocsdl((rt ? rt : rt0)->rt_gateway);
 
 	/*
 	 * Check the address family and length is valid, the address
@@ -240,12 +240,12 @@ atmresolve(struct rtentry *rt0, struct mbuf *m, const struct sockaddr *dst,
 
 	if (sdl->sdl_family == AF_LINK && sdl->sdl_alen == sizeof(*desten)) {
 		memcpy(desten, CLLADDR(sdl), sdl->sdl_alen);
-		if (rt != rt0)
+		if (rt != NULL)
 			rtfree(rt);
 		return (1);	/* ok, go for it! */
 	}
 
-	if (rt != rt0)
+	if (rt != NULL)
 		rtfree(rt);
 
 	/*

@@ -308,7 +308,7 @@ if_initname(struct ifnet *ifp, const char *name, int unit)
 
 int
 if_nulloutput(struct ifnet *ifp, struct mbuf *m,
-    const struct sockaddr *so, struct rtentry *rt)
+    const struct sockaddr *so, const struct rtentry *rt)
 {
 
 	return ENXIO;

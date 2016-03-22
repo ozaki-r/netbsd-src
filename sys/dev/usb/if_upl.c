@@ -193,7 +193,7 @@ Static void upl_stop(struct upl_softc *);
 Static void upl_watchdog(struct ifnet *);
 
 Static int upl_output(struct ifnet *, struct mbuf *, const struct sockaddr *,
-		      struct rtentry *);
+		      const struct rtentry *);
 Static void upl_input(struct ifnet *, struct mbuf *);
 
 /*
@@ -985,7 +985,7 @@ upl_stop(struct upl_softc *sc)
 
 Static int
 upl_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt0)
+    const struct rtentry *rt0)
 {
 	int s, len, error;
 

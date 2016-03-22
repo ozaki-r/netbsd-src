@@ -332,7 +332,8 @@ static int	stripinput(int, struct tty *);
 static int	stripioctl(struct ifnet *, u_long, void *);
 static int	stripopen(dev_t, struct tty *);
 static int	stripoutput(struct ifnet *,
-		    struct mbuf *, const struct sockaddr *, struct rtentry *);
+		    struct mbuf *, const struct sockaddr *,
+		    const struct rtentry *);
 static int	stripstart(struct tty *);
 static int	striptioctl(struct tty *, u_long, void *, int, struct lwp *);
 
@@ -721,7 +722,7 @@ strip_send(struct strip_softc *sc, struct mbuf *m0)
  */
 int
 stripoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	struct strip_softc *sc = ifp->if_softc;
 	struct ip *ip;

@@ -158,7 +158,8 @@ extern pfil_head_t *inet_pfil_hook;			/* XXX */
 int	ip_do_loopback_cksum = 0;
 
 static int
-ip_mark_mpls(struct ifnet * const ifp, struct mbuf * const m, struct rtentry *rt)
+ip_mark_mpls(struct ifnet * const ifp, struct mbuf * const m,
+    const struct rtentry *rt)
 {
 	int error = 0;
 #ifdef MPLS
@@ -193,7 +194,7 @@ ip_mark_mpls(struct ifnet * const ifp, struct mbuf * const m, struct rtentry *rt
  */
 int
 ip_if_output(struct ifnet * const ifp, struct mbuf * const m,
-    const struct sockaddr * const dst, struct rtentry *rt)
+    const struct sockaddr * const dst, const struct rtentry *rt)
 {
 	int error = 0;
 

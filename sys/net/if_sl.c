@@ -198,7 +198,7 @@ static int	slinput(int, struct tty *);
 static int	slioctl(struct ifnet *, u_long, void *);
 static int	slopen(dev_t, struct tty *);
 static int	sloutput(struct ifnet *, struct mbuf *, const struct sockaddr *,
-			 struct rtentry *);
+			 const struct rtentry *);
 static int	slstart(struct tty *);
 static int	sltioctl(struct tty *, u_long, void *, int, struct lwp *);
 
@@ -433,7 +433,7 @@ sltioctl(struct tty *tp, u_long cmd, void *data, int flag,
  */
 static int
 sloutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rtp)
+    const struct rtentry *rtp)
 {
 	struct sl_softc *sc = ifp->if_softc;
 	struct ip *ip;

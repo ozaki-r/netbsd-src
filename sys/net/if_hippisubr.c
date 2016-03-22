@@ -73,7 +73,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_hippisubr.c,v 1.46 2016/04/20 09:01:04 knakahara 
 #endif
 
 static int	hippi_output(struct ifnet *, struct mbuf *,
-			     const struct sockaddr *, struct rtentry *);
+			     const struct sockaddr *, const struct rtentry *);
 static void	hippi_input(struct ifnet *, struct mbuf *);
 
 /*
@@ -85,7 +85,7 @@ static void	hippi_input(struct ifnet *, struct mbuf *);
 
 static int
 hippi_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	uint16_t htype;
 	uint32_t ifield = 0;

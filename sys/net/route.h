@@ -403,9 +403,9 @@ int	rt_setgate(struct rtentry *, const struct sockaddr *);
 const struct sockaddr *
 	rt_settag(struct rtentry *, const struct sockaddr *);
 struct sockaddr *
-	rt_gettag(struct rtentry *);
+	rt_gettag(const struct rtentry *);
 
-int	rt_check_reject_route(struct rtentry *, struct ifnet *);
+int	rt_check_reject_route(const struct rtentry *, const struct ifnet *);
 
 static inline void
 rt_assert_referenced(const struct rtentry *rt)

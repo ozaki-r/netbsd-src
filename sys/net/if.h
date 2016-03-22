@@ -267,7 +267,7 @@ typedef struct ifnet {
 	 */
 	int	(*if_output)		/* output routine (enqueue) */
 		    (struct ifnet *, struct mbuf *, const struct sockaddr *,
-		     struct rtentry *);
+		     const struct rtentry *);
 	void	(*_if_input)		/* input routine (from h/w driver) */
 		    (struct ifnet *, struct mbuf *);
 	void	(*if_start)		/* initiate output routine */
@@ -945,7 +945,7 @@ int	ifq_enqueue2(struct ifnet *, struct ifqueue *, struct mbuf *);
 int	loioctl(struct ifnet *, u_long, void *);
 void	loopattach(int);
 int	looutput(struct ifnet *,
-	   struct mbuf *, const struct sockaddr *, struct rtentry *);
+	   struct mbuf *, const struct sockaddr *, const struct rtentry *);
 void	lortrequest(int, struct rtentry *, const struct rt_addrinfo *);
 
 /*
@@ -953,7 +953,7 @@ void	lortrequest(int, struct rtentry *, const struct rt_addrinfo *);
  * an interface is going away without having to burn a flag.
  */
 int	if_nulloutput(struct ifnet *, struct mbuf *,
-	    const struct sockaddr *, struct rtentry *);
+	    const struct sockaddr *, const struct rtentry *);
 void	if_nullinput(struct ifnet *, struct mbuf *);
 void	if_nullstart(struct ifnet *);
 int	if_nullioctl(struct ifnet *, u_long, void *);

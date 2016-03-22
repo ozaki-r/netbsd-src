@@ -86,7 +86,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_faith.c,v 1.51 2015/08/20 14:40:19 christos Exp $
 
 static int	faithioctl(struct ifnet *, u_long, void *);
 static int	faithoutput(struct ifnet *, struct mbuf *,
-		            const struct sockaddr *, struct rtentry *);
+		            const struct sockaddr *, const struct rtentry *);
 static void	faithrtrequest(int, struct rtentry *,
 		               const struct rt_addrinfo *);
 
@@ -143,7 +143,7 @@ faith_clone_destroy(struct ifnet *ifp)
 
 static int
 faithoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	pktqueue_t *pktq;
 	size_t pktlen;

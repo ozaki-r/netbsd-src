@@ -306,7 +306,7 @@ gif_check_nesting(struct ifnet *ifp, struct mbuf *m)
 
 int
 gif_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	struct gif_softc *sc = ifp->if_softc;
 	int error = 0;

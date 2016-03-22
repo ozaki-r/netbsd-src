@@ -2090,7 +2090,7 @@ carp_start(struct ifnet *ifp)
 
 int
 carp_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *sa,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	struct carp_softc *sc = ((struct carp_softc *)ifp->if_softc);
 	KASSERT(KERNEL_LOCKED_P());
