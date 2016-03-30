@@ -158,6 +158,12 @@ static void db_print_ifa(struct ifaddr *);
 static int db_show_rtentry(struct rtentry *, void *);
 #endif
 
+static krwlock_t rtlock;
+#define RT_RLOCK()	rw_enter(&rtlock, RW_READER)
+#define RT_WLOCK()	rw_enter(&rtlock, RW_WRITER)
+#define RT_UNLOCK()	rw_exit(&rtlock)
+#define RT_REF(_rt)	do {} while(0)
+
 #ifdef RTFLUSH_DEBUG
 static void sysctl_net_rtcache_setup(struct sysctllog **);
 static void
@@ -313,6 +319,8 @@ void
 rt_init(void)
 {
 
+	rw_init(&rtlock);
+
 #ifdef RTFLUSH_DEBUG
 	sysctl_net_rtcache_setup(NULL);
 #endif
@@ -340,7 +348,9 @@ rtflushall(int family)
 	if ((dom = pffinddomain(family)) == NULL)
 		return;
 
+	RT_WLOCK();
 	rtcache_invalidate(&dom->dom_rtcache);
+	RT_UNLOCK();
 }
 
 static void
@@ -356,7 +366,9 @@ rtcache(struct route *ro)
 	if ((dom = pffinddomain(rtcache_getdst(ro)->sa_family)) == NULL)
 		return;
 
+	RT_WLOCK();
 	LIST_INSERT_HEAD(&dom->dom_rtcache, ro, ro_rtcache_next);
+	RT_UNLOCK();
 	rtcache_invariants(ro);
 }
 
@@ -402,15 +414,25 @@ rtalloc1(const struct sockaddr *dst, int report)
 	int s;
 
 	s = splsoftnet();
+
+	RT_RLOCK();
 	rtbl = rt_gettable(dst->sa_family);
-	if (rtbl == NULL)
+	if (rtbl == NULL) {
+		RT_UNLOCK();
+		rtstat.rts_unreach++;
 		goto miss;
+	}
 
 	rt = rt_matchaddr(rtbl, dst);
-	if (rt == NULL)
+	if (rt == NULL) {
+		RT_UNLOCK();
+		rtstat.rts_unreach++;
 		goto miss;
+	}
 
 	rt->rt_refcnt++;
+	RT_REF(rt);
+	RT_UNLOCK();
 
 	splx(s);
 	return rt;
@@ -442,15 +464,32 @@ rtcache_check_rtrefcnt(int family)
 	if (dom == NULL)
 		return;
 
+	RT_RLOCK();
 	LIST_FOREACH(ro, &dom->dom_rtcache, ro_rtcache_next)
 		KDASSERT(ro->_ro_rt == NULL || ro->_ro_rt->rt_refcnt > 0);
+	RT_UNLOCK();
 }
 #endif
+
+static void
+rtfree0(struct rtentry *rt)
+{
+	struct ifaddr *ifa;
+
+	rt_assert_inactive(rt);
+	rttrash--;
+	rt_timer_remove_all(rt, 0);
+	ifa = rt->rt_ifa;
+	rt->rt_ifa = NULL;
+	ifafree(ifa);
+	rt->rt_ifp = NULL;
+	rt_destroy(rt);
+	pool_put(&rtentry_pool, rt);
+}
 
 void
 rtfree(struct rtentry *rt)
 {
-	struct ifaddr *ifa;
 
 	KASSERT(rt != NULL);
 	KASSERT(rt->rt_refcnt > 0);
@@ -460,17 +499,8 @@ rtfree(struct rtentry *rt)
 	if (rt_getkey(rt) != NULL)
 		rtcache_check_rtrefcnt(rt_getkey(rt)->sa_family);
 #endif
-	if (rt->rt_refcnt == 0 && (rt->rt_flags & RTF_UP) == 0) {
-		rt_assert_inactive(rt);
-		rttrash--;
-		rt_timer_remove_all(rt, 0);
-		ifa = rt->rt_ifa;
-		rt->rt_ifa = NULL;
-		ifafree(ifa);
-		rt->rt_ifp = NULL;
-		rt_destroy(rt);
-		pool_put(&rtentry_pool, rt);
-	}
+	if (rt->rt_refcnt == 0 && (rt->rt_flags & RTF_UP) == 0)
+		rtfree0(rt);
 }
 
 /*
@@ -758,6 +788,11 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 	int flags = info->rti_flags;
 #define senderr(x) { error = x ; goto bad; }
 
+	if (req == RTM_GET)
+		RT_RLOCK();
+	else
+		RT_WLOCK();
+
 	if ((rtbl = rt_gettable(dst->sa_family)) == NULL)
 		senderr(ESRCH);
 	if (flags & RTF_HOST)
@@ -789,6 +824,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		if (ret_nrt) {
 			*ret_nrt = rt;
 			rt->rt_refcnt++;
+			RT_REF(rt);
 		} else if (rt->rt_refcnt <= 0) {
 			/* Adjust the refcount */
 			rt->rt_refcnt++;
@@ -852,9 +888,11 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		if (ret_nrt) {
 			*ret_nrt = rt;
 			rt->rt_refcnt++;
+			RT_REF(rt);
 		}
+		RT_UNLOCK();
 		rtflushall(dst->sa_family);
-		break;
+		goto exit;
 	case RTM_GET:
 		if (netmask != NULL) {
 			rt_maskedcopy(dst, (struct sockaddr *)&maskeddst,
@@ -866,10 +904,13 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		if (ret_nrt != NULL) {
 			*ret_nrt = rt;
 			rt->rt_refcnt++;
+			RT_REF(rt);
 		}
 		break;
 	}
 bad:
+	RT_UNLOCK();
+exit:
 	splx(s);
 	return error;
 }
