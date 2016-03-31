@@ -161,6 +161,7 @@ static int db_show_rtentry(struct rtentry *, void *);
 static krwlock_t rtlock;
 #define RT_RLOCK()	rw_enter(&rtlock, RW_READER)
 #define RT_WLOCK()	rw_enter(&rtlock, RW_WRITER)
+#define RT_WLOCKED()	rw_write_held(&rtlock)
 #define RT_UNLOCK()	rw_exit(&rtlock)
 #define RT_REF(_rt)	do {} while(0)
 
@@ -342,15 +343,15 @@ rtflushall(int family)
 {
 	struct domain *dom;
 
+	KASSERT(RT_WLOCKED());
+
 	if (rtcache_debug())
 		printf("%s: enter\n", __func__);
 
 	if ((dom = pffinddomain(family)) == NULL)
 		return;
 
-	RT_WLOCK();
 	rtcache_invalidate(&dom->dom_rtcache);
-	RT_UNLOCK();
 }
 
 static void
@@ -788,13 +789,10 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 	int flags = info->rti_flags;
 #define senderr(x) { error = x ; goto bad; }
 
-	if (req == RTM_GET)
-		RT_RLOCK();
-	else
-		RT_WLOCK();
-
-	if ((rtbl = rt_gettable(dst->sa_family)) == NULL)
-		senderr(ESRCH);
+	if ((rtbl = rt_gettable(dst->sa_family)) == NULL) {
+		error = ESRCH;
+		goto bad_nolock;
+	}
 	if (flags & RTF_HOST)
 		netmask = NULL;
 	switch (req) {
@@ -804,6 +802,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			    netmask);
 			dst = (struct sockaddr *)&maskeddst;
 		}
+		RT_WLOCK();
 		if ((rt = rt_lookup(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
 		if ((rt = rt_deladdr(rtbl, dst, netmask)) == NULL)
@@ -834,11 +833,13 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 
 	case RTM_ADD:
 		if (info->rti_ifa == NULL && (error = rt_getifa(info)))
-			senderr(error);
+			goto bad_nolock;
 		ifa = info->rti_ifa;
 		rt = pool_get(&rtentry_pool, PR_NOWAIT);
-		if (rt == NULL)
-			senderr(ENOBUFS);
+		if (rt == NULL) {
+			error = ENOBUFS;
+			goto bad_nolock;
+		}
 		memset(rt, 0, sizeof(*rt));
 		rt->rt_flags = RTF_UP | flags;
 		LIST_INIT(&rt->rt_timer);
@@ -873,6 +874,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		else
 			rt->rt_ifp = ifa->ifa_ifp;
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
+		RT_WLOCK();
 		rc = rt_addaddr(rtbl, rt, netmask);
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (rc != 0) {
@@ -890,10 +892,10 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			rt->rt_refcnt++;
 			RT_REF(rt);
 		}
-		RT_UNLOCK();
 		rtflushall(dst->sa_family);
-		goto exit;
+		break;
 	case RTM_GET:
+		RT_RLOCK();
 		if (netmask != NULL) {
 			rt_maskedcopy(dst, (struct sockaddr *)&maskeddst,
 			    netmask);
@@ -910,7 +912,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 	}
 bad:
 	RT_UNLOCK();
-exit:
+bad_nolock:
 	splx(s);
 	return error;
 }
