@@ -416,14 +416,13 @@ rtalloc1(const struct sockaddr *dst, int report)
 
 	s = splsoftnet();
 
-	RT_RLOCK();
 	rtbl = rt_gettable(dst->sa_family);
 	if (rtbl == NULL) {
-		RT_UNLOCK();
 		rtstat.rts_unreach++;
 		goto miss;
 	}
 
+	RT_RLOCK();
 	rt = rt_matchaddr(rtbl, dst);
 	if (rt == NULL) {
 		RT_UNLOCK();
