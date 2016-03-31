@@ -34,6 +34,7 @@
 #ifndef _NET_ROUTE_H_
 #define _NET_ROUTE_H_
 
+#include <sys/psref.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -98,6 +99,7 @@ struct rt_metrics {
 #ifndef RNF_NORMAL
 #include <net/radix.h>
 #endif
+
 struct rtentry {
 	struct	radix_node rt_nodes[2];	/* tree glue, and other values */
 #define	rt_mask(r)	((const struct sockaddr *)((r)->rt_nodes->rn_mask))
@@ -115,6 +117,7 @@ struct rtentry {
 	struct	rtentry *rt_parent;	/* parent of cloned route */
 	struct	sockaddr *_rt_key;
 	struct	sockaddr *rt_tag;	/* route tagging info */
+	struct psref_target	rt_psref;
 };
 
 static inline const struct sockaddr *
@@ -380,11 +383,14 @@ void	rt_timer_timer(void *);
 void	rt_newmsg(const int, const struct rtentry *);
 struct rtentry *
 	rtalloc1(const struct sockaddr *, int);
+struct rtentry *
+	rtalloc1_psref(const struct sockaddr *, struct psref *, int);
 void	rtfree(struct rtentry *);
+void	rt_unref(struct rtentry *, struct psref *);
 int	rtinit(struct ifaddr *, int, int);
-void	rtredirect(const struct sockaddr *, const struct sockaddr *,
+void	rtredirect_psref(const struct sockaddr *, const struct sockaddr *,
 	    const struct sockaddr *, int, const struct sockaddr *,
-	    struct rtentry **);
+	    struct rtentry **, struct psref *);
 int	rtrequest(int, const struct sockaddr *,
 	    const struct sockaddr *, const struct sockaddr *, int,
 	    struct rtentry **);

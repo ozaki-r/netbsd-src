@@ -598,7 +598,9 @@ reflect:
 		icmp_reflect(m);
 		return;
 
-	case ICMP_REDIRECT:
+	case ICMP_REDIRECT: {
+		struct psref psref;
+
 		if (code > 3)
 			goto badcode;
 		if (icmp_rediraccept == 0)
@@ -627,8 +629,9 @@ reflect:
 #endif
 		icmpsrc.sin_addr = icp->icmp_ip.ip_dst;
 		rt = NULL;
-		rtredirect(sintosa(&icmpsrc), sintosa(&icmpdst),
-		    NULL, RTF_GATEWAY | RTF_HOST, sintosa(&icmpgw), &rt);
+		rtredirect_psref(sintosa(&icmpsrc), sintosa(&icmpdst),
+		    NULL, RTF_GATEWAY | RTF_HOST, sintosa(&icmpgw), &rt,
+		    &psref);
 		if (rt != NULL && icmp_redirtimeout != 0) {
 			i = rt_timer_add(rt, icmp_redirect_timeout,
 					 icmp_redirect_timeout_q);
@@ -641,7 +644,7 @@ reflect:
 			}
 		}
 		if (rt != NULL)
-			rtfree(rt);
+			rt_unref(rt, &psref);
 
 		pfctlinput(PRC_REDIRECT_HOST, sintosa(&icmpsrc));
 #if defined(IPSEC)
@@ -649,6 +652,7 @@ reflect:
 			key_sa_routechange((struct sockaddr *)&icmpsrc);
 #endif
 		break;
+	    }
 
 	/*
 	 * No kernel processing for the following;

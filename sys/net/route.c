@@ -158,12 +158,15 @@ static void db_print_ifa(struct ifaddr *);
 static int db_show_rtentry(struct rtentry *, void *);
 #endif
 
-static krwlock_t rtlock;
-#define RT_RLOCK()	rw_enter(&rtlock, RW_READER)
-#define RT_WLOCK()	rw_enter(&rtlock, RW_WRITER)
-#define RT_WLOCKED()	rw_write_held(&rtlock)
-#define RT_UNLOCK()	rw_exit(&rtlock)
+static krwlock_t		rt_lock;
+#define RT_RLOCK()	rw_enter(&rt_lock, RW_READER)
+#define RT_WLOCK()	rw_enter(&rt_lock, RW_WRITER)
+#define RT_WLOCKED()	rw_write_held(&rt_lock)
+#define RT_UNLOCK()	rw_exit(&rt_lock)
 #define RT_REF(_rt)	do {} while(0)
+
+static pserialize_t		rt_psz;
+static struct psref_class	*rt_class;
 
 #ifdef RTFLUSH_DEBUG
 static void sysctl_net_rtcache_setup(struct sysctllog **);
@@ -320,7 +323,11 @@ void
 rt_init(void)
 {
 
-	rw_init(&rtlock);
+	rw_init(&rt_lock);
+	rt_psz = pserialize_create();
+	if (rt_psz == NULL)
+		panic("%s: pserialize_create failed\n", __func__);
+	rt_class = psref_class_create("rt_psref", IPL_SOFTNET);
 
 #ifdef RTFLUSH_DEBUG
 	sysctl_net_rtcache_setup(NULL);
@@ -408,7 +415,7 @@ dump_rt(const struct rtentry *rt)
  * will be incremented. The caller has to rtfree it by itself.
  */
 struct rtentry *
-rtalloc1(const struct sockaddr *dst, int report)
+rtalloc1_psref(const struct sockaddr *dst, struct psref *psref, int report)
 {
 	rtbl_t *rtbl;
 	struct rtentry *rt;
@@ -430,8 +437,14 @@ rtalloc1(const struct sockaddr *dst, int report)
 		goto miss;
 	}
 
+	if (psref != NULL) {
+		if (psref_acquire(psref, &rt->rt_psref, rt_class) != 0) {
+			RT_UNLOCK();
+			rtstat.rts_unreach++;
+			goto miss;
+		}
+	}
 	rt->rt_refcnt++;
-	RT_REF(rt);
 	RT_UNLOCK();
 
 	splx(s);
@@ -447,6 +460,13 @@ miss:
 	}
 	splx(s);
 	return NULL;
+}
+
+struct rtentry *
+rtalloc1(const struct sockaddr *dst, int report)
+{
+
+	return rtalloc1_psref(dst, NULL, report);
 }
 
 #ifdef DEBUG
@@ -503,6 +523,14 @@ rtfree(struct rtentry *rt)
 		rtfree0(rt);
 }
 
+void
+rt_unref(struct rtentry *rt, struct psref *psref)
+{
+
+	psref_release(&psref, &rt->rt_psref, rt_class);
+	rtfree(rt);
+}
+
 /*
  * Force a routing table entry to the specified
  * destination to go through the given gateway.
@@ -512,22 +540,23 @@ rtfree(struct rtentry *rt)
  * N.B.: must be called at splsoftnet
  */
 void
-rtredirect(const struct sockaddr *dst, const struct sockaddr *gateway,
+rtredirect_psref(const struct sockaddr *dst, const struct sockaddr *gateway,
 	const struct sockaddr *netmask, int flags, const struct sockaddr *src,
-	struct rtentry **rtp)
+	struct rtentry **rtp, struct psref *psref)
 {
 	struct rtentry *rt;
 	int error = 0;
 	uint64_t *stat = NULL;
 	struct rt_addrinfo info;
 	struct ifaddr *ifa;
+	struct psref psref;
 
 	/* verify the gateway is directly reachable */
 	if ((ifa = ifa_ifwithnet(gateway)) == NULL) {
 		error = ENETUNREACH;
 		goto out;
 	}
-	rt = rtalloc1(dst, 0);
+	rt = rtalloc1_psref(dst, &psref, 0);
 	/*
 	 * If the redirect isn't from our current router for this dst,
 	 * it's either old or wrong.  If it redirects us to ourselves,
@@ -590,9 +619,11 @@ rtredirect(const struct sockaddr *dst, const struct sockaddr *gateway,
 		error = EHOSTUNREACH;
 done:
 	if (rt) {
-		if (rtp != NULL && !error)
-			*rtp = rt;
-		else
+		if (rtp != NULL && !error) {
+			KASSERT(psref != NULL);
+			if (psref_acquire(psref, &rt->rt_psref, rt_class) == 0)
+				*rtp = rt;
+		} else
 			rtfree(rt);
 	}
 out:
@@ -801,9 +832,15 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			    netmask);
 			dst = (struct sockaddr *)&maskeddst;
 		}
-		RT_WLOCK();
+		// XXX can we separate these two locks?
+		RT_RLOCK();
 		if ((rt = rt_lookup(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
+		RT_UNLOCK();
+
+		psref_target_drain(&rt->rt_psref, rt.class);
+
+		RT_WLOCK();
 		if ((rt = rt_deladdr(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
 		rt->rt_flags &= ~RTF_UP;
@@ -873,6 +910,9 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		else
 			rt->rt_ifp = ifa->ifa_ifp;
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
+
+		psref_target_init(&rt->rt_psref, rt_class);
+
 		RT_WLOCK();
 		rc = rt_addaddr(rtbl, rt, netmask);
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);

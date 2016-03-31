@@ -2266,6 +2266,7 @@ icmp6_redirect_input(struct mbuf *m, int off)
 		struct sockaddr_in6 ssrc;
 		unsigned long rtcount;
 		struct rtentry *newrt = NULL;
+		struct psref *psref;
 
 		/*
 		 * do not install redirect route, if the number of entries
@@ -2294,15 +2295,15 @@ icmp6_redirect_input(struct mbuf *m, int off)
 		bcopy(&redtgt6, &sgw.sin6_addr, sizeof(struct in6_addr));
 		bcopy(&reddst6, &sdst.sin6_addr, sizeof(struct in6_addr));
 		bcopy(&src6, &ssrc.sin6_addr, sizeof(struct in6_addr));
-		rtredirect((struct sockaddr *)&sdst, (struct sockaddr *)&sgw,
+		rtredirect_psref((struct sockaddr *)&sdst, (struct sockaddr *)&sgw,
 			   NULL, RTF_GATEWAY | RTF_HOST,
 			   (struct sockaddr *)&ssrc,
-			   &newrt);
+			   &newrt, &psref);
 
 		if (newrt) {
 			(void)rt_timer_add(newrt, icmp6_redirect_timeout,
 			    icmp6_redirect_timeout_q);
-			rtfree(newrt);
+			rt_unref(newrt, &psref);
 		}
 	}
 	/* finally update cached route in each socket via pfctlinput */
