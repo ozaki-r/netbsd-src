@@ -877,10 +877,12 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		rc = rt_addaddr(rtbl, rt, netmask);
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (rc != 0) {
+			RT_UNLOCK();
 			ifafree(ifa);
 			rt_destroy(rt);
 			pool_put(&rtentry_pool, rt);
-			senderr(rc);
+			error = rc;
+			goto bad_nolock;
 		}
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (ifa->ifa_rtrequest)
