@@ -2266,7 +2266,7 @@ icmp6_redirect_input(struct mbuf *m, int off)
 		struct sockaddr_in6 ssrc;
 		unsigned long rtcount;
 		struct rtentry *newrt = NULL;
-		struct psref *psref;
+		struct psref psref;
 
 		/*
 		 * do not install redirect route, if the number of entries

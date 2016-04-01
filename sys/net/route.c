@@ -437,13 +437,9 @@ rtalloc1_psref(const struct sockaddr *dst, struct psref *psref, int report)
 		goto miss;
 	}
 
-	if (psref != NULL) {
-		if (psref_acquire(psref, &rt->rt_psref, rt_class) != 0) {
-			RT_UNLOCK();
-			rtstat.rts_unreach++;
-			goto miss;
-		}
-	}
+	if (psref != NULL)
+		psref_acquire(psref, &rt->rt_psref, rt_class);
+
 	rt->rt_refcnt++;
 	RT_UNLOCK();
 
@@ -527,7 +523,7 @@ void
 rt_unref(struct rtentry *rt, struct psref *psref)
 {
 
-	psref_release(&psref, &rt->rt_psref, rt_class);
+	psref_release(psref, &rt->rt_psref, rt_class);
 	rtfree(rt);
 }
 
@@ -549,14 +545,13 @@ rtredirect_psref(const struct sockaddr *dst, const struct sockaddr *gateway,
 	uint64_t *stat = NULL;
 	struct rt_addrinfo info;
 	struct ifaddr *ifa;
-	struct psref psref;
 
 	/* verify the gateway is directly reachable */
 	if ((ifa = ifa_ifwithnet(gateway)) == NULL) {
 		error = ENETUNREACH;
 		goto out;
 	}
-	rt = rtalloc1_psref(dst, &psref, 0);
+	rt = rtalloc1_psref(dst, psref, 0);
 	/*
 	 * If the redirect isn't from our current router for this dst,
 	 * it's either old or wrong.  If it redirects us to ourselves,
@@ -590,7 +585,7 @@ rtredirect_psref(const struct sockaddr *dst, const struct sockaddr *gateway,
 			 */
 		create:
 			if (rt != NULL)
-				rtfree(rt);
+				rt_unref(rt, psref);
 			flags |=  RTF_GATEWAY | RTF_DYNAMIC;
 			memset(&info, 0, sizeof(info));
 			info.rti_info[RTAX_DST] = dst;
@@ -621,10 +616,10 @@ done:
 	if (rt) {
 		if (rtp != NULL && !error) {
 			KASSERT(psref != NULL);
-			if (psref_acquire(psref, &rt->rt_psref, rt_class) == 0)
-				*rtp = rt;
+			psref_acquire(psref, &rt->rt_psref, rt_class);
+			*rtp = rt;
 		} else
-			rtfree(rt);
+			rt_unref(rt, psref);
 	}
 out:
 	if (error)
@@ -838,7 +833,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			senderr(ESRCH);
 		RT_UNLOCK();
 
-		psref_target_drain(&rt->rt_psref, rt.class);
+		psref_target_destroy(&rt->rt_psref, rt_class);
 
 		RT_WLOCK();
 		if ((rt = rt_deladdr(rtbl, dst, netmask)) == NULL)
