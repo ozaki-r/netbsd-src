@@ -115,6 +115,7 @@ __KERNEL_RCSID(0, "$NetBSD: route.c,v 1.166 2016/04/26 09:31:18 ozaki-r Exp $");
 #include <sys/pool.h>
 #include <sys/kauth.h>
 #include <sys/workqueue.h>
+#include <sys/cpu.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -139,6 +140,9 @@ static struct pool	rttimer_pool;
 static struct callout	rt_timer_ch; /* callout for rt_timer_timer() */
 static struct workqueue	*rt_timer_wq;
 static struct work	rt_timer_wk;
+
+static void rt_delete_work(struct work *, void *);
+static struct workqueue	*rt_delete_wq;
 
 #ifdef RTFLUSH_DEBUG
 static int _rtcache_debug = 0;
@@ -325,12 +329,18 @@ route_listener_cb(kauth_cred_t cred, kauth_action_t action, void *cookie,
 void
 rt_init(void)
 {
+	int error;
 
 	rw_init(&rt_lock);
 	rt_psz = pserialize_create();
 	if (rt_psz == NULL)
 		panic("%s: pserialize_create failed\n", __func__);
 	rt_class = psref_class_create("rt_psref", IPL_SOFTNET);
+
+	error = workqueue_create(&rt_delete_wq, "rt_delete",
+	    rt_delete_work, NULL, PRI_SOFTNET, IPL_SOFTNET, WQ_MPSAFE);
+	if (error)
+		panic("%s: workqueue_create failed (%d)\n", __func__, error);
 
 #ifdef RTFLUSH_DEBUG
 	sysctl_net_rtcache_setup(NULL);
@@ -830,28 +840,33 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			    netmask);
 			dst = (struct sockaddr *)&maskeddst;
 		}
-		// XXX can we separate these two locks?
-		RT_RLOCK();
+		RT_WLOCK();
 		if ((rt = rt_lookup(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
-		RT_UNLOCK();
 
-		psref_target_destroy(&rt->rt_psref, rt_class);
-
-		RT_WLOCK();
 		if ((rt = rt_deladdr(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
-		rt->rt_flags &= ~RTF_UP;
-		if ((ifa = rt->rt_ifa)) {
-			if (ifa->ifa_flags & IFA_ROUTE &&
-			    rt_ifa_connected(rt, ifa)) {
-				RT_DPRINTF("rt->_rt_key = %p, ifa = %p, "
-				    "deleted IFA_ROUTE\n",
-				    (void *)rt->_rt_key, (void *)ifa);
-				ifa->ifa_flags &= ~IFA_ROUTE;
+
+		if (!cpu_softintr_p()) {
+			psref_target_destroy(&rt->rt_psref, rt_class);
+
+			rt->rt_flags &= ~RTF_UP;
+			if ((ifa = rt->rt_ifa)) {
+				if (ifa->ifa_flags & IFA_ROUTE &&
+				    rt_ifa_connected(rt, ifa)) {
+					RT_DPRINTF(
+					    "rt->_rt_key = %p, ifa = %p, "
+					    "deleted IFA_ROUTE\n",
+					    (void *)rt->_rt_key, (void *)ifa);
+					ifa->ifa_flags &= ~IFA_ROUTE;
+				}
+				if (ifa->ifa_rtrequest)
+					ifa->ifa_rtrequest(RTM_DELETE, rt,
+					    info);
 			}
-			if (ifa->ifa_rtrequest)
-				ifa->ifa_rtrequest(RTM_DELETE, rt, info);
+		} else {
+			rt->rt_refcnt++;
+			workqueue_enqueue(rt_delete_wq, &rt->rt_work, NULL);
 		}
 		rttrash++;
 		if (ret_nrt) {
@@ -1407,6 +1422,33 @@ rt_timer_timer(void *arg)
 {
 
 	workqueue_enqueue(rt_timer_wq, &rt_timer_wk, NULL);
+}
+
+static void
+rt_delete_work(struct work *wk, void *arg)
+{
+	struct rtentry *rt = container_of(wk, struct rtentry, rt_work);
+	struct ifaddr *ifa;
+
+	psref_target_destroy(&rt->rt_psref, rt_class);
+
+	rt_free_gwroute(rt);
+	rt->rt_flags &= ~RTF_UP;
+	if ((ifa = rt->rt_ifa)) {
+		if (ifa->ifa_flags & IFA_ROUTE &&
+		    rt_ifa_connected(rt, ifa)) {
+			RT_DPRINTF(
+			    "rt->_rt_key = %p, ifa = %p, "
+			    "deleted IFA_ROUTE\n",
+			    (void *)rt->_rt_key, (void *)ifa);
+			ifa->ifa_flags &= ~IFA_ROUTE;
+		}
+		if (ifa->ifa_rtrequest)
+			ifa->ifa_rtrequest(RTM_DELETE, rt,
+			    NULL);
+	}
+
+	rtfree(rt);
 }
 
 static struct rtentry *

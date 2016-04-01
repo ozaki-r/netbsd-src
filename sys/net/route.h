@@ -38,6 +38,7 @@
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/workqueue.h>
 #include <net/if.h>
 
 #if !(defined(_KERNEL) || defined(_STANDALONE))
@@ -118,6 +119,7 @@ struct rtentry {
 	struct	sockaddr *_rt_key;
 	struct	sockaddr *rt_tag;	/* route tagging info */
 	struct psref_target	rt_psref;
+	struct work		rt_work;
 };
 
 static inline const struct sockaddr *
