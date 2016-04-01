@@ -56,6 +56,7 @@ __KERNEL_RCSID(0, "$NetBSD: nd6.c,v 1.193 2016/04/26 09:30:01 ozaki-r Exp $");
 #include <sys/syslog.h>
 #include <sys/queue.h>
 #include <sys/cprng.h>
+#include <sys/workqueue.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -113,10 +114,13 @@ static int regen_tmpaddr(struct in6_ifaddr *);
 static void nd6_free(struct llentry *, int);
 static void nd6_llinfo_timer(void *);
 static void nd6_timer(void *);
+static void nd6_timer_work(struct work *, void *);
 static void clear_llinfo_pqueue(struct llentry *);
 
 static callout_t nd6_slowtimo_ch;
 static callout_t nd6_timer_ch;
+static struct workqueue	*nd6_timer_wq;
+static struct work	nd6_timer_wk;
 
 static int fill_drlist(void *, size_t *, size_t);
 static int fill_prlist(void *, size_t *, size_t);
@@ -126,12 +130,18 @@ MALLOC_DEFINE(M_IP6NDP, "NDP", "IPv6 Neighbour Discovery");
 void
 nd6_init(void)
 {
+	int error;
 
 	/* initialization of the default router list */
 	TAILQ_INIT(&nd_defrouter);
 
 	callout_init(&nd6_slowtimo_ch, CALLOUT_MPSAFE);
 	callout_init(&nd6_timer_ch, CALLOUT_MPSAFE);
+
+	error = workqueue_create(&nd6_timer_wq, "nd6_timer",
+	    nd6_timer_work, NULL, PRI_SOFTNET, IPL_SOFTNET, WQ_MPSAFE);
+	if (error)
+		panic("%s: workqueue_create failed (%d)\n", __func__, error);
 
 	/* start timer */
 	callout_reset(&nd6_slowtimo_ch, ND6_SLOWTIMER_INTERVAL * hz,
@@ -556,7 +566,7 @@ out:
  * ND6 timer routine to expire default route list and prefix list
  */
 static void
-nd6_timer(void *ignored_arg)
+nd6_timer_work(struct work *wk, void *arg)
 {
 	struct nd_defrouter *next_dr, *dr;
 	struct nd_prefix *next_pr, *pr;
@@ -676,6 +686,13 @@ nd6_timer(void *ignored_arg)
 
 	KERNEL_UNLOCK_ONE(NULL);
 	mutex_exit(softnet_lock);
+}
+
+static void
+nd6_timer(void *ignored_arg)
+{
+
+	workqueue_enqueue(nd6_timer_wq, &nd6_timer_wk, NULL);
 }
 
 /* ia6: deprecated/invalidated temporary address */
