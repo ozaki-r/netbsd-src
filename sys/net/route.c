@@ -137,8 +137,8 @@ static struct pool	rtentry_pool;
 static struct pool	rttimer_pool;
 
 static struct callout	rt_timer_ch; /* callout for rt_timer_timer() */
-struct workqueue	*rt_timer_wq;
-struct work		rt_timer_wk;
+static struct workqueue	*rt_timer_wq;
+static struct work	rt_timer_wk;
 
 #ifdef RTFLUSH_DEBUG
 static int _rtcache_debug = 0;
