@@ -433,6 +433,38 @@ psref_target_destroy(struct psref_target *target, struct psref_class *class)
 	target->prt_class = NULL;
 }
 
+void
+psref_target_wait(struct psref_target *target, struct psref_class *class)
+{
+
+	ASSERT_SLEEPABLE();
+
+	KASSERTMSG((target->prt_class == class),
+	    "mismatched psref target class: %p (ref) != %p (expected)",
+	    target->prt_class, class);
+
+	/* Request psref_release to notify us when done.  */
+	KASSERTMSG(!target->prt_draining, "psref target already destroyed: %p",
+	    target);
+	target->prt_draining = true;
+
+	/* Wait until there are no more references on any CPU.  */
+	while (psreffed_p(target, class)) {
+		/*
+		 * This enter/wait/exit business looks wrong, but it is
+		 * both necessary, because psreffed_p performs a
+		 * low-priority xcall and hence cannot run while a
+		 * mutex is locked, and OK, because the wait is timed
+		 * -- explicit wakeups are only an optimization.
+		 */
+		mutex_enter(&class->prc_lock);
+		(void)cv_timedwait(&class->prc_cv, &class->prc_lock, 1);
+		mutex_exit(&class->prc_lock);
+	}
+
+	target->prt_draining = false;
+}
+
 static bool
 _psref_held(const struct psref_target *target, struct psref_class *class,
     bool lwp_mismatch_ok)

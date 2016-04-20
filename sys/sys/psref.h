@@ -81,6 +81,7 @@ void	psref_class_destroy(struct psref_class *);
 
 void	psref_target_init(struct psref_target *, struct psref_class *);
 void	psref_target_destroy(struct psref_target *, struct psref_class *);
+void	psref_target_wait(struct psref_target *, struct psref_class *);
 
 void	psref_acquire(struct psref *, const struct psref_target *,
 	    struct psref_class *);
