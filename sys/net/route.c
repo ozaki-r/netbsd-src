@@ -1432,7 +1432,6 @@ rt_delete_work(struct work *wk, void *arg)
 
 	psref_target_destroy(&rt->rt_psref, rt_class);
 
-	rt_free_gwroute(rt);
 	rt->rt_flags &= ~RTF_UP;
 	if ((ifa = rt->rt_ifa)) {
 		if (ifa->ifa_flags & IFA_ROUTE &&
