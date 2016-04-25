@@ -295,9 +295,12 @@ rt_replace_ifa(struct rtentry *rt, struct ifaddr *ifa)
 		}
 	}
 
+	RT_WLOCK();
+	psref_target_wait(&rt->rt_psref, rt_class);
 	ifaref(ifa);
 	ifafree(rt->rt_ifa);
 	rt_set_ifa1(rt, ifa);
+	RT_UNLOCK();
 }
 
 static void
@@ -892,6 +895,7 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		memset(rt, 0, sizeof(*rt));
 		rt->rt_flags = RTF_UP | flags;
 		LIST_INIT(&rt->rt_timer);
+		psref_target_init(&rt->rt_psref, rt_class);
 
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (netmask) {
@@ -924,22 +928,22 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 			rt->rt_ifp = ifa->ifa_ifp;
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 
-		psref_target_init(&rt->rt_psref, rt_class);
+		if (ifa->ifa_rtrequest)
+			ifa->ifa_rtrequest(req, rt, info);
 
 		RT_WLOCK();
 		rc = rt_addaddr(rtbl, rt, netmask);
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (rc != 0) {
 			RT_UNLOCK();
+			if (ifa->ifa_rtrequest)
+				ifa->ifa_rtrequest(RTM_DELETE, rt, info);
 			ifafree(ifa);
 			rt_destroy(rt);
 			pool_put(&rtentry_pool, rt);
 			error = rc;
 			goto bad_nolock;
 		}
-		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
-		if (ifa->ifa_rtrequest)
-			ifa->ifa_rtrequest(req, rt, info);
 		RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 		if (ret_nrt) {
 			*ret_nrt = rt;
@@ -974,6 +978,15 @@ bad_nolock:
 int
 rt_setgate(struct rtentry *rt, const struct sockaddr *gate)
 {
+	int error = 0;
+	struct rtentry *gwrt = NULL;
+
+	if (rt->rt_flags & RTF_GATEWAY)
+		/* Don't call rtalloc1 with holding RT_WLOCK */
+		gwrt = rtalloc1(gate, 1);
+
+	RT_WLOCK();
+	psref_target_wait(&rt->rt_psref, rt_class);
 
 	KASSERT(rt->_rt_key != NULL);
 	RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
@@ -982,13 +995,14 @@ rt_setgate(struct rtentry *rt, const struct sockaddr *gate)
 		sockaddr_free(rt->rt_gateway);
 	KASSERT(rt->_rt_key != NULL);
 	RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
-	if ((rt->rt_gateway = sockaddr_dup(gate, M_ZERO | M_NOWAIT)) == NULL)
-		return ENOMEM;
+	if ((rt->rt_gateway = sockaddr_dup(gate, M_ZERO | M_NOWAIT)) == NULL) {
+		error = ENOMEM;
+		goto out;
+	}
 	KASSERT(rt->_rt_key != NULL);
 	RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
 
-	if (rt->rt_flags & RTF_GATEWAY) {
-		struct rtentry *gwrt = rtalloc1(gate, 1);
+	if (rt->rt_flags & RTF_GATEWAY && gwrt != NULL) {
 		/*
 		 * If we switched gateways, grab the MTU from the new
 		 * gateway route if the current MTU, if the current MTU is
@@ -996,20 +1010,21 @@ rt_setgate(struct rtentry *rt, const struct sockaddr *gate)
 		 * Note that, if the MTU of gateway is 0, we will reset the
 		 * MTU of the route to run PMTUD again from scratch. XXX
 		 */
-		if (gwrt != NULL) {
-			KASSERT(gwrt->_rt_key != NULL);
-			RT_DPRINTF("gwrt->_rt_key = %p\n", gwrt->_rt_key);
-			if ((rt->rt_rmx.rmx_locks & RTV_MTU) == 0 &&
-			    rt->rt_rmx.rmx_mtu &&
-			    rt->rt_rmx.rmx_mtu > gwrt->rt_rmx.rmx_mtu) {
-				rt->rt_rmx.rmx_mtu = gwrt->rt_rmx.rmx_mtu;
-			}
-			rtfree(gwrt);
+		KASSERT(gwrt->_rt_key != NULL);
+		RT_DPRINTF("gwrt->_rt_key = %p\n", gwrt->_rt_key);
+		if ((rt->rt_rmx.rmx_locks & RTV_MTU) == 0 &&
+		    rt->rt_rmx.rmx_mtu &&
+		    rt->rt_rmx.rmx_mtu > gwrt->rt_rmx.rmx_mtu) {
+			rt->rt_rmx.rmx_mtu = gwrt->rt_rmx.rmx_mtu;
 		}
 	}
 	KASSERT(rt->_rt_key != NULL);
 	RT_DPRINTF("rt->_rt_key = %p\n", (void *)rt->_rt_key);
-	return 0;
+out:
+	RT_UNLOCK();
+	if (gwrt != NULL)
+		rtfree(gwrt);
+	return error;
 }
 
 static void
@@ -1616,11 +1631,14 @@ rtcache_setdst(struct route *ro, const struct sockaddr *sa)
 const struct sockaddr *
 rt_settag(struct rtentry *rt, const struct sockaddr *tag)
 {
+	RT_WLOCK();
+	psref_target_wait(&rt->rt_psref, rt_class);
 	if (rt->rt_tag != tag) {
 		if (rt->rt_tag != NULL)
 			sockaddr_free(rt->rt_tag);
 		rt->rt_tag = sockaddr_dup(tag, M_ZERO | M_NOWAIT);
 	}
+	RT_UNLOCK();
 	return rt->rt_tag; 
 }
 
