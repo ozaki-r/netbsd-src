@@ -478,7 +478,7 @@ int
 rip_connect_pcb(struct inpcb *inp, struct sockaddr_in *addr)
 {
 
-	if (IFNET_EMPTY())
+	if (IFNET_READER_EMPTY())
 		return (EADDRNOTAVAIL);
 	if (addr->sin_family != AF_INET)
 		return (EAFNOSUPPORT);
@@ -565,7 +565,7 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 		return EINVAL;
 
 	s = splsoftnet();
-	if (IFNET_EMPTY()) {
+	if (IFNET_READER_EMPTY()) {
 		error = EADDRNOTAVAIL;
 		goto release;
 	}

@@ -355,15 +355,26 @@ tbr_timeout(void *arg)
 	int active, s;
 
 	active = 0;
-	s = splnet();
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
+		struct psref psref;
 		if (!TBR_IS_ENABLED(&ifp->if_snd))
 			continue;
+		psref_acquire(&psref, &ifp->if_psref, ifnet_psref_class);
+		pserialize_read_exit(s);
+
 		active++;
-		if (!IFQ_IS_EMPTY(&ifp->if_snd) && ifp->if_start != NULL)
+		if (!IFQ_IS_EMPTY(&ifp->if_snd) && ifp->if_start != NULL) {
+			int _s = splnet();
 			(*ifp->if_start)(ifp);
+			splx(_s);
+		}
+
+		s = pserialize_read_enter();
+		psref_release(&psref, &ifp->if_psref, ifnet_psref_class);
 	}
-	splx(s);
+	pserialize_read_exit(s);
+
 	if (active > 0)
 		CALLOUT_RESET(&tbr_callout, 1, tbr_timeout, (void *)0);
 	else

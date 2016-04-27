@@ -85,6 +85,8 @@
 #include <net/pfil.h>
 #ifdef _KERNEL
 #include <net/pktqueue.h>
+#include <sys/pslist.h>
+#include <sys/psref.h>
 #endif
 
 /*
@@ -352,6 +354,8 @@ typedef struct ifnet {
 	struct if_percpuq	*if_percpuq; /* We should remove it in the future */
 	void	*if_link_si;		/* softint to handle link state changes */
 	uint16_t	if_link_queue;	/* masked link state change queue */
+	struct pslist_entry	if_pslist_entry;
+	struct psref_target     if_psref;
 #endif
 } ifnet_t;
  
@@ -979,10 +983,6 @@ __END_DECLS
 
 #ifdef _KERNEL
 
-#define	IFNET_FIRST()			TAILQ_FIRST(&ifnet_list)
-#define	IFNET_EMPTY()			TAILQ_EMPTY(&ifnet_list)
-#define	IFNET_NEXT(__ifp)		TAILQ_NEXT((__ifp), if_list)
-#define	IFNET_FOREACH(__ifp)		TAILQ_FOREACH(__ifp, &ifnet_list, if_list)
 #define	IFADDR_FIRST(__ifp)		TAILQ_FIRST(&(__ifp)->if_addrlist)
 #define	IFADDR_NEXT(__ifa)		TAILQ_NEXT((__ifa), ifa_list)
 #define	IFADDR_FOREACH(__ifa, __ifp)	TAILQ_FOREACH(__ifa, \
@@ -992,7 +992,31 @@ __END_DECLS
 					    &(__ifp)->if_addrlist, ifa_list, __nifa)
 #define	IFADDR_EMPTY(__ifp)		TAILQ_EMPTY(&(__ifp)->if_addrlist)
 
-extern struct ifnet_head ifnet_list;
+#define	IFNET_LOCK()			mutex_enter(&ifnet_mtx)
+#define	IFNET_UNLOCK()			mutex_exit(&ifnet_mtx)
+#define	IFNET_LOCKED()			mutex_owned(&ifnet_mtx)
+
+#define IFNET_READER_EMPTY() \
+	(PSLIST_READER_FIRST(&ifnet_list, struct ifnet, if_pslist_entry) == NULL)
+#define IFNET_READER_FIRST() \
+	PSLIST_READER_FIRST(&ifnet_list, struct ifnet, if_pslist_entry)
+#define IFNET_READER_NEXT(__ifp) \
+	PSLIST_READER_NEXT((__ifp), struct ifnet, if_pslist_entry)
+#define IFNET_READER_FOREACH(__ifp) \
+	PSLIST_READER_FOREACH((__ifp), &ifnet_list, struct ifnet, \
+	                      if_pslist_entry)
+#define IFNET_WRITER_INSERT_HEAD(__ifp) \
+	PSLIST_WRITER_INSERT_HEAD(&ifnet_list, (__ifp), if_pslist_entry)
+#define IFNET_WRITER_REMOVE(__ifp) \
+	PSLIST_WRITER_REMOVE((__ifp), if_pslist_entry)
+#define IFNET_WRITER_FOREACH(__ifp) \
+	PSLIST_WRITER_FOREACH((__ifp), &ifnet_list, struct ifnet, \
+	                      if_pslist_entry)
+
+extern struct pslist_head ifnet_list;
+extern struct psref_class *ifnet_psref_class;
+extern kmutex_t ifnet_mtx;
+
 extern struct ifnet *lo0ifp;
 
 ifnet_t *	if_byindex(u_int);

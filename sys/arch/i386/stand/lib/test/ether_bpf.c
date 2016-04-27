@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <sys/ioctl.h>
+#include <sys/pslist.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <net/if.h>
@@ -62,7 +63,7 @@
 static int bpf = -1;
 
 static struct nlist nl[] = {
-	{"_ifnet"},
+	{"ifnet_list"},
 	{NULL}
 };
 
@@ -74,7 +75,7 @@ EtherInit(char *ha)
 	struct ifreq ifr;
 	kvm_t *kvm;
 	char errbuf[_POSIX2_LINE_MAX];
-	struct ifnet_head ifh;
+	struct pslist_head ifh;
 	struct ifnet *ifp;
 	struct ifaddr *ifap = 0;
 	struct sockaddr_dl *sdlp;
@@ -125,8 +126,8 @@ EtherInit(char *ha)
 		return 0;
 	}
 
-	kvm_read(kvm, nl[0].n_value, &ifh, sizeof(struct ifnet_head));
-	ifp = TAILQ_FIRST(&ifh);
+	kvm_read(kvm, nl[0].n_value, &ifh, sizeof(struct pslist_head));
+	ifp = PSLIST_READER_FIRST(&ifh, struct ifnet, if_pslist_entry);
 	while (ifp) {
 		struct ifnet ifnet;
 		kvm_read(kvm, (u_long)ifp, &ifnet, sizeof(struct ifnet));
@@ -134,7 +135,7 @@ EtherInit(char *ha)
 			ifap = IFADDR_FIRST(&ifnet);
 			break;
 		}
-		ifp = IFNET_NEXT(&ifnet);
+		ifp = PSLIST_READER_NEXT(&ifnet, struct ifnet, if_pslist_entry);
 	}
 	if (!ifp) {
 		warnx("interface not found");

@@ -224,7 +224,8 @@ setroot(device_t bootdv, int bootpartition)
 	if (vops != NULL && strcmp(rootfstype, MOUNT_NFS) == 0 &&
 	    rootspec == NULL &&
 	    (bootdv == NULL || device_class(bootdv) != DV_IFNET)) {
-		IFNET_FOREACH(ifp) {
+		int s = pserialize_read_enter();
+		IFNET_READER_FOREACH(ifp) {
 			if ((ifp->if_flags &
 			     (IFF_LOOPBACK|IFF_POINTOPOINT)) == 0)
 				break;
@@ -242,6 +243,7 @@ setroot(device_t bootdv, int bootpartition)
 			 */
 			rootspec = (const char *)ifp->if_xname;
 		}
+		pserialize_read_exit(s);
 	}
 	if (vops != NULL)
 		vfs_delref(vops);

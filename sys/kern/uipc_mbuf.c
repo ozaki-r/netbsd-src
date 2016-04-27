@@ -556,9 +556,23 @@ m_reclaim(void *arg, int flags)
 			if (pr->pr_drain)
 				(*pr->pr_drain)();
 	}
-	IFNET_FOREACH(ifp) {
-		if (ifp->if_drain)
-			(*ifp->if_drain)(ifp);
+	/* XXX we cannot use psref in H/W interrupt */
+	if (!cpu_intr_p()) {
+		int bound = curlwp->l_pflag & LP_BOUND;
+		curlwp->l_pflag |= LP_BOUND;
+		IFNET_READER_FOREACH(ifp) {
+			struct psref psref;
+
+			psref_acquire(&psref, &ifp->if_psref,
+			    ifnet_psref_class);
+
+			if (ifp->if_drain)
+				(*ifp->if_drain)(ifp);
+
+			psref_release(&psref, &ifp->if_psref,
+			    ifnet_psref_class);
+		}
+		curlwp->l_pflag ^= bound ^ LP_BOUND;
 	}
 	splx(s);
 	mbstat.m_drain++;

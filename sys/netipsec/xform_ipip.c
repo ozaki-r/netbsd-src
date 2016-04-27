@@ -333,7 +333,8 @@ _ipip_input(struct mbuf *m, int iphlen, struct ifnet *gifp)
 	if ((m->m_pkthdr.rcvif == NULL ||
 	    !(m->m_pkthdr.rcvif->if_flags & IFF_LOOPBACK)) &&
 	    ipip_allow != 2) {
-		IFNET_FOREACH(ifp) {
+		int s = pserialize_read_enter();
+		IFNET_READER_FOREACH(ifp) {
 			IFADDR_FOREACH(ifa, ifp) {
 #ifdef INET
 				if (ipo) {
@@ -345,6 +346,7 @@ _ipip_input(struct mbuf *m, int iphlen, struct ifnet *gifp)
 
 					if (sin->sin_addr.s_addr ==
 					    ipo->ip_src.s_addr)	{
+						pserialize_read_exit(s);
 						IPIP_STATINC(IPIP_STAT_SPOOF);
 						m_freem(m);
 						return;
@@ -361,6 +363,7 @@ _ipip_input(struct mbuf *m, int iphlen, struct ifnet *gifp)
 					sin6 = (struct sockaddr_in6 *) ifa->ifa_addr;
 
 					if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr, &ip6->ip6_src)) {
+						pserialize_read_exit(s);
 						IPIP_STATINC(IPIP_STAT_SPOOF);
 						m_freem(m);
 						return;
@@ -370,6 +373,7 @@ _ipip_input(struct mbuf *m, int iphlen, struct ifnet *gifp)
 #endif /* INET6 */
 			}
 		}
+		pserialize_read_exit(s);
 	}
 
 	/* Statistics */

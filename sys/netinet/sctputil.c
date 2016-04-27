@@ -3607,9 +3607,11 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 {
 	struct ifnet *ifn;
 	struct ifaddr *ifa;
+	int s;
 
 	/* go through all our known interfaces */
-	IFNET_FOREACH(ifn) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifn) {
 		/* go through each interface addresses */
 		IFADDR_FOREACH(ifa, ifn) {
 			/* correct family? */
@@ -3632,6 +3634,7 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 				if (memcmp(&sin1->sin6_addr, &sin2->sin6_addr,
 					   sizeof(struct in6_addr)) == 0) {
 					/* found it */
+					pserialize_read_exit(s);
 					return (ifa);
 				}
 			} else
@@ -3644,12 +3647,15 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 				if (sin1->sin_addr.s_addr ==
 				    sin2->sin_addr.s_addr) {
 					/* found it */
+					pserialize_read_exit(s);
 					return (ifa);
 				}
 			}
 			/* else, not AF_INET or AF_INET6, so skip */
 		} /* end foreach ifa */
 	} /* end foreach ifn */
+	pserialize_read_exit(s);
+
 	/* not found! */
 	return (NULL);
 }

@@ -96,6 +96,7 @@ svr4_32_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval, int fd, u_long
 		{
 			struct ifnet *ifp;
 			int ifnum = 0;
+			int s;
 
 			/*
 			 * This does not return the number of physical
@@ -109,8 +110,10 @@ svr4_32_sock_ioctl(file_t *fp, struct lwp *l, register_t *retval, int fd, u_long
 			 * entry per physical interface?
 			 */
 
-			IFNET_FOREACH(ifp)
+			s = pserialize_read_enter();
+			IFNET_READER_FOREACH(ifp)
 				ifnum += svr4_count_ifnum(ifp)
+			pserialize_read_exit(s);
 
 			DPRINTF(("SIOCGIFNUM %d\n", ifnum));
 			return copyout(&ifnum, data, sizeof(ifnum));

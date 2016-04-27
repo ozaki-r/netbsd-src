@@ -667,7 +667,7 @@ rip6_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 
 	if (addr->sin6_len != sizeof(*addr))
 		return EINVAL;
-	if (IFNET_EMPTY() || addr->sin6_family != AF_INET6)
+	if (IFNET_READER_EMPTY() || addr->sin6_family != AF_INET6)
 		return EADDRNOTAVAIL;
 
 	if ((error = sa6_embedscope(addr, ip6_use_defzone)) != 0)
@@ -712,7 +712,7 @@ rip6_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 	KASSERT(in6p != NULL);
 	KASSERT(nam != NULL);
 
-	if (IFNET_EMPTY())
+	if (IFNET_READER_EMPTY())
 		return EADDRNOTAVAIL;
 	if (addr->sin6_family != AF_INET6)
 		return EAFNOSUPPORT;

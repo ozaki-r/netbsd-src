@@ -161,8 +161,12 @@ MALLOC_DEFINE(M_IFMADDR, "ether_multi", "link-level multicast address");
 /*
  * Global list of interfaces.
  */
-struct ifnet_head		ifnet_list;
+struct pslist_head		ifnet_list;
 static ifnet_t **		ifindex2ifnet = NULL;
+/* Mutex to protect the above objects. */
+kmutex_t			ifnet_mtx __cacheline_aligned;
+struct psref_class		*ifnet_psref_class __read_mostly;
+static pserialize_t		ifnet_psz;
 
 static u_int			if_index = 1;
 static size_t			if_indexlim = 0;
@@ -271,7 +275,10 @@ ifinit1(void)
 {
 	mutex_init(&index_gen_mtx, MUTEX_DEFAULT, IPL_NONE);
 	mutex_init(&if_clone_mtx, MUTEX_DEFAULT, IPL_NONE);
-	TAILQ_INIT(&ifnet_list);
+	mutex_init(&ifnet_mtx, MUTEX_DEFAULT, IPL_NONE);
+	ifnet_psz = pserialize_create();
+	ifnet_psref_class = psref_class_create("ifnet", IPL_SOFTNET);
+	PSLIST_INIT(&ifnet_list);
 	if_indexlim = 8;
 
 	if_pfil = pfil_head_create(PFIL_TYPE_IFNET, NULL);
@@ -637,6 +644,9 @@ if_initialize(ifnet_t *ifp)
 	if (ifp->if_link_si == NULL)
 		panic("%s: softint_establish() failed", __func__);
 
+	PSLIST_ENTRY_INIT(ifp, if_pslist_entry);
+	psref_target_init(&ifp->if_psref, ifnet_psref_class);
+
 	if_getindex(ifp);
 }
 
@@ -665,7 +675,10 @@ if_register(ifnet_t *ifp)
 		if_slowtimo(ifp);
 	}
 
-	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
+	// XXX TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
+	IFNET_LOCK();
+	IFNET_WRITER_INSERT_HEAD(ifp);
+	IFNET_UNLOCK();
 }
 
 /*
@@ -919,11 +932,20 @@ if_attachdomain(void)
 {
 	struct ifnet *ifp;
 	int s;
+	int bound = curlwp->l_pflag & LP_BOUND;
 
-	s = splnet();
-	IFNET_FOREACH(ifp)
+	curlwp->l_pflag |= LP_BOUND;
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
+		struct psref psref;
+		psref_acquire(&psref, &ifp->if_psref, ifnet_psref_class);
+		pserialize_read_exit(s);
 		if_attachdomain1(ifp);
-	splx(s);
+		s = pserialize_read_enter();
+		psref_release(&psref, &ifp->if_psref, ifnet_psref_class);
+	}
+	pserialize_read_exit(s);
+	curlwp->l_pflag ^= bound ^ LP_BOUND;
 }
 
 static void
@@ -1011,8 +1033,17 @@ if_detach(struct ifnet *ifp)
 
 	s = splnet();
 
+	sysctl_teardown(&ifp->if_sysctl_log);
+
+	IFNET_LOCK();
 	ifindex2ifnet[ifp->if_index] = NULL;
-	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
+	IFNET_WRITER_REMOVE(ifp);
+	pserialize_perform(ifnet_psz);
+	IFNET_UNLOCK();
+
+	/* Wait for all readers to drain before freeing.  */
+	psref_target_destroy(&ifp->if_psref, ifnet_psref_class);
+	PSLIST_ENTRY_DESTROY(ifp, if_pslist_entry);
 
 	if (ifp->if_slowtimo != NULL) {
 		ifp->if_slowtimo = NULL;
@@ -1035,8 +1066,6 @@ if_detach(struct ifnet *ifp)
 
 	if (ifp->if_snd.ifq_lock)
 		mutex_obj_free(ifp->if_snd.ifq_lock);
-
-	sysctl_teardown(&ifp->if_sysctl_log);
 
 #if NCARP > 0
 	/* Remove the interface from any carp group it is a part of.  */
@@ -1445,8 +1474,10 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1462,6 +1493,7 @@ ifa_ifwithaddr(const struct sockaddr *addr)
 				return ifa;
 		}
 	}
+	pserialize_read_exit(s);
 	return NULL;
 }
 
@@ -1474,8 +1506,10 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 {
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
+	int s;
 
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		if ((ifp->if_flags & IFF_POINTOPOINT) == 0)
@@ -1488,6 +1522,7 @@ ifa_ifwithdstaddr(const struct sockaddr *addr)
 				return ifa;
 		}
 	}
+	pserialize_read_exit(s);
 	return NULL;
 }
 
@@ -1504,6 +1539,7 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	struct ifaddr *ifa_maybe = 0;
 	u_int af = addr->sa_family;
 	const char *addr_data = addr->sa_data, *cplim;
+	int s;
 
 	if (af == AF_LINK) {
 		sdl = satocsdl(addr);
@@ -1517,7 +1553,8 @@ ifa_ifwithnet(const struct sockaddr *addr)
 	if (af == AF_APPLETALK) {
 		const struct sockaddr_at *sat, *sat2;
 		sat = (const struct sockaddr_at *)addr;
-		IFNET_FOREACH(ifp) {
+		s = pserialize_read_enter();
+		IFNET_READER_FOREACH(ifp) {
 			if (ifp->if_output == if_nulloutput)
 				continue;
 			ifa = at_ifawithnet((const struct sockaddr_at *)addr, ifp);
@@ -1531,10 +1568,12 @@ ifa_ifwithnet(const struct sockaddr *addr)
 				ifa_maybe = ifa;
 			}
 		}
+		pserialize_read_exit(s);
 		return ifa_maybe;
 	}
 #endif
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
@@ -1560,6 +1599,7 @@ ifa_ifwithnet(const struct sockaddr *addr)
 				ifa_maybe = ifa;
 		}
 	}
+	pserialize_read_exit(s);
 	return ifa_maybe;
 }
 
@@ -1584,17 +1624,21 @@ struct ifaddr *
 ifa_ifwithaf(int af)
 {
 	struct ifnet *ifp;
-	struct ifaddr *ifa;
+	struct ifaddr *ifa = NULL;
+	int s;
 
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 		IFADDR_FOREACH(ifa, ifp) {
 			if (ifa->ifa_addr->sa_family == af)
-				return ifa;
+				goto out;
 		}
 	}
-	return NULL;
+out:
+	pserialize_read_exit(s);
+	return ifa;
 }
 
 /*
@@ -2027,6 +2071,7 @@ ifunit(const char *name)
 	const char *cp = name;
 	u_int unit = 0;
 	u_int i;
+	int s;
 
 	/*
 	 * If the entire name is a number, treat it as an ifindex.
@@ -2047,13 +2092,17 @@ ifunit(const char *name)
 		return ifp;
 	}
 
-	IFNET_FOREACH(ifp) {
+	ifp = NULL;
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (ifp->if_output == if_nulloutput)
 			continue;
 	 	if (strcmp(ifp->if_xname, name) == 0)
-			return ifp;
+			goto out;
 	}
-	return NULL;
+out:
+	pserialize_read_exit(s);
+	return ifp;
 }
 
 ifnet_t *
@@ -2580,17 +2629,27 @@ ifconf(u_long cmd, void *data)
 	int space = 0, error = 0;
 	const int sz = (int)sizeof(struct ifreq);
 	const bool docopy = ifc->ifc_req != NULL;
+	int s;
+	int bound = curlwp->l_pflag & LP_BOUND;
+	struct psref psref;
 
 	if (docopy) {
 		space = ifc->ifc_len;
 		ifrp = ifc->ifc_req;
 	}
 
-	IFNET_FOREACH(ifp) {
+	curlwp->l_pflag |= LP_BOUND;
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
+		psref_acquire(&psref, &ifp->if_psref, ifnet_psref_class);
+		pserialize_read_exit(s);
+
 		(void)strncpy(ifr.ifr_name, ifp->if_xname,
 		    sizeof(ifr.ifr_name));
-		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0')
-			return ENAMETOOLONG;
+		if (ifr.ifr_name[sizeof(ifr.ifr_name) - 1] != '\0') {
+			error = ENAMETOOLONG;
+			goto release_exit;
+		}
 		if (IFADDR_EMPTY(ifp)) {
 			/* Interface with no addresses - send zero sockaddr. */
 			memset(&ifr.ifr_addr, 0, sizeof(ifr.ifr_addr));
@@ -2601,7 +2660,7 @@ ifconf(u_long cmd, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0)
-					return error;
+					goto release_exit;
 				ifrp++;
 				space -= sz;
 			}
@@ -2620,11 +2679,17 @@ ifconf(u_long cmd, void *data)
 			if (space >= sz) {
 				error = copyout(&ifr, ifrp, sz);
 				if (error != 0)
-					return (error);
+					goto release_exit;
 				ifrp++; space -= sz;
 			}
 		}
+
+		s = pserialize_read_enter();
+		psref_release(&psref, &ifp->if_psref, ifnet_psref_class);
 	}
+	pserialize_read_exit(s);
+	curlwp->l_pflag ^= bound ^ LP_BOUND;
+
 	if (docopy) {
 		KASSERT(0 <= space && space <= ifc->ifc_len);
 		ifc->ifc_len -= space;
@@ -2633,6 +2698,11 @@ ifconf(u_long cmd, void *data)
 		ifc->ifc_len = space;
 	}
 	return (0);
+
+release_exit:
+	psref_release(&psref, &ifp->if_psref, ifnet_psref_class);
+	curlwp->l_pflag ^= bound ^ LP_BOUND;
+	return error;
 }
 
 int
