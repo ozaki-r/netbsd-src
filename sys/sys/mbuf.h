@@ -180,7 +180,7 @@ struct m_hdr {
 struct	pkthdr {
 	union {
 		void		*ctx;		/* for M_GETCTX/M_SETCTX */
-		uint16_t	index;		/* rcv interface index */
+		if_index_t	index;		/* rcv interface index */
 	} _rcvif;
 #define rcvif_index		_rcvif.index
 	SLIST_HEAD(packet_tags, m_tag) tags;	/* list of packet tags */
