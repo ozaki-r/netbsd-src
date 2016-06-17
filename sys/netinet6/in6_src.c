@@ -600,9 +600,11 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 * If the destination address is a multicast address and the outgoing
 	 * interface for the address is specified by the caller, use it.
 	 */
-	if (IN6_IS_ADDR_MULTICAST(dst) &&
-	    mopts != NULL && (ifp = mopts->im6o_multicast_ifp) != NULL) {
-		goto done; /* we do not need a route for multicast. */
+	if (IN6_IS_ADDR_MULTICAST(dst) && mopts != NULL) {
+		/* XXX not MP-safe yet */
+		ifp = if_byindex(mopts->im6o_multicast_if_index);
+		if (ifp != NULL)
+			goto done; /* we do not need a route for multicast. */
 	}
 
   getroute:

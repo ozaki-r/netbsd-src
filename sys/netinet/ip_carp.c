@@ -1542,7 +1542,7 @@ carp_multicast_cleanup(struct carp_softc *sc)
 		LIST_REMOVE(imm, i6mm_chain);
 		in6_leavegroup(imm);
 	}
-	im6o->im6o_multicast_ifp = NULL;
+	im6o->im6o_multicast_if_index = 0;
 #endif
 
 	/* And any other multicast memberships */
@@ -1909,7 +1909,7 @@ carp_join_multicast6(struct carp_softc *sc)
 	}
 
 	/* apply v6 multicast membership */
-	im6o->im6o_multicast_ifp = &sc->sc_if;
+	im6o->im6o_multicast_if_index = sc->sc_if.if_index;
 	if (imm)
 		LIST_INSERT_HEAD(&im6o->im6o_memberships, imm,
 		    i6mm_chain);

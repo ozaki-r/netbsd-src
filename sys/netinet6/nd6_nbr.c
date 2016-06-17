@@ -400,7 +400,7 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 
 	if (daddr6 == NULL || IN6_IS_ADDR_MULTICAST(daddr6)) {
 		m->m_flags |= M_MCAST;
-		im6o.im6o_multicast_ifp = ifp;
+		im6o.im6o_multicast_if_index = if_get_index(ifp);
 		im6o.im6o_multicast_hlim = 255;
 		im6o.im6o_multicast_loop = 0;
 	}
@@ -907,7 +907,7 @@ nd6_na_output(
 
 	if (IN6_IS_ADDR_MULTICAST(&daddr6)) {
 		m->m_flags |= M_MCAST;
-		im6o.im6o_multicast_ifp = ifp;
+		im6o.im6o_multicast_if_index = if_get_index(ifp);
 		im6o.im6o_multicast_hlim = 255;
 		im6o.im6o_multicast_loop = 0;
 	}

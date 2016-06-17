@@ -544,7 +544,7 @@ mld_sendpkt(struct in6_multi *in6m, int type,
 
 	/* construct multicast option */
 	memset(&im6o, 0, sizeof(im6o));
-	im6o.im6o_multicast_ifp = ifp;
+	im6o.im6o_multicast_if_index = if_get_index(ifp);
 	im6o.im6o_multicast_hlim = 1;
 
 	/*

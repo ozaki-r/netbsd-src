@@ -1564,7 +1564,7 @@ phyint_send(struct ip6_hdr *ip6, struct mif6 *mifp, struct mbuf *m)
 	if (m->m_pkthdr.rcvif_index == 0) {
 		struct ip6_moptions im6o;
 
-		im6o.im6o_multicast_ifp = ifp;
+		im6o.im6o_multicast_if_index = if_get_index(ifp);
 		/* XXX: ip6_output will override ip6->ip6_hlim */
 		im6o.im6o_multicast_hlim = ip6->ip6_hlim;
 		im6o.im6o_multicast_loop = 1;

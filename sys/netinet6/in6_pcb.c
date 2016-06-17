@@ -812,6 +812,8 @@ in6_pcbpurgeif0(struct inpcbtable *table, struct ifnet *ifp)
 	struct ip6_moptions *im6o;
 	struct in6_multi_mship *imm, *nimm;
 
+	KASSERT(ifp != NULL);
+
 	TAILQ_FOREACH_SAFE(inph, &table->inpt_queue, inph_queue, ninph) {
 		struct in6pcb *in6p = (struct in6pcb *)inph;
 		if (in6p->in6p_af != AF_INET6)
@@ -823,8 +825,8 @@ in6_pcbpurgeif0(struct inpcbtable *table, struct ifnet *ifp)
 			 * Unselect the outgoing interface if it is being
 			 * detached.
 			 */
-			if (im6o->im6o_multicast_ifp == ifp)
-				im6o->im6o_multicast_ifp = NULL;
+			if (im6o->im6o_multicast_if_index == ifp->if_index)
+				im6o->im6o_multicast_if_index = 0;
 
 			/*
 			 * Drop multicast group membership if we joined

@@ -2377,7 +2377,7 @@ ip6_setmoptions(const struct sockopt *sopt, struct in6pcb *in6p)
 		if (im6o == NULL)
 			return (ENOBUFS);
 		in6p->in6p_moptions = im6o;
-		im6o->im6o_multicast_ifp = NULL;
+		im6o->im6o_multicast_if_index = 0;
 		im6o->im6o_multicast_hlim = ip6_defmcasthlim;
 		im6o->im6o_multicast_loop = IPV6_DEFAULT_MULTICAST_LOOP;
 		LIST_INIT(&im6o->im6o_memberships);
@@ -2404,7 +2404,7 @@ ip6_setmoptions(const struct sockopt *sopt, struct in6pcb *in6p)
 			}
 		} else
 			ifp = NULL;
-		im6o->im6o_multicast_ifp = ifp;
+		im6o->im6o_multicast_if_index = if_get_index(ifp);
 		break;
 
 	case IPV6_MULTICAST_HOPS:
@@ -2585,7 +2585,7 @@ ip6_setmoptions(const struct sockopt *sopt, struct in6pcb *in6p)
 	/*
 	 * If all options have default values, no need to keep the mbuf.
 	 */
-	if (im6o->im6o_multicast_ifp == NULL &&
+	if (im6o->im6o_multicast_if_index == 0 &&
 	    im6o->im6o_multicast_hlim == ip6_defmcasthlim &&
 	    im6o->im6o_multicast_loop == IPV6_DEFAULT_MULTICAST_LOOP &&
 	    im6o->im6o_memberships.lh_first == NULL) {
@@ -2608,10 +2608,10 @@ ip6_getmoptions(struct sockopt *sopt, struct in6pcb *in6p)
 
 	switch (sopt->sopt_name) {
 	case IPV6_MULTICAST_IF:
-		if (im6o == NULL || im6o->im6o_multicast_ifp == NULL)
+		if (im6o == NULL || im6o->im6o_multicast_if_index == 0)
 			optval = 0;
 		else
-			optval = im6o->im6o_multicast_ifp->if_index;
+			optval = im6o->im6o_multicast_if_index;
 
 		error = sockopt_set(sopt, &optval, sizeof(optval));
 		break;

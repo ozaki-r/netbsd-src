@@ -109,7 +109,7 @@ struct	ip6asfrag {
 #define IP6_REASS_MBUF(ip6af) ((ip6af)->ip6af_m)
 
 struct	ip6_moptions {
-	struct	ifnet *im6o_multicast_ifp; /* ifp for outgoing multicasts */
+	if_index_t im6o_multicast_if_index; /* I/F for outgoing multicasts */
 	u_char	im6o_multicast_hlim;	/* hoplimit for outgoing multicasts */
 	u_char	im6o_multicast_loop;	/* 1 >= hear sends if a member */
 	LIST_HEAD(, in6_multi_mship) im6o_memberships;
