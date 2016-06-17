@@ -114,7 +114,7 @@ struct ipoption {
  * passed to ip_output when IP multicast options are in use.
  */
 struct ip_moptions {
-	struct	  ifnet *imo_multicast_ifp; /* ifp for outgoing multicasts */
+	if_index_t imo_multicast_if_index; /* I/F for outgoing multicasts */
 	struct in_addr imo_multicast_addr; /* ifindex/addr on MULTICAST_IF */
 	u_int8_t  imo_multicast_ttl;	/* TTL for outgoing multicasts */
 	u_int8_t  imo_multicast_loop;	/* 1 => hear sends if a member */

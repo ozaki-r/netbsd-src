@@ -905,6 +905,13 @@ ifnet_t *if_get_byindex(u_int, struct psref *);
 void	if_put(const struct ifnet *, struct psref *);
 void	if_acquire_unsafe(struct ifnet *, struct psref *);
 
+static inline if_index_t
+if_get_index(const struct ifnet *ifp)
+{
+
+	return ifp != NULL ? ifp->if_index : 0;
+}
+
 bool	if_held(struct ifnet *);
 
 void	if_input(struct ifnet *, struct mbuf *);

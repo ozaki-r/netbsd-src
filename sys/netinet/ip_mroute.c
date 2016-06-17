@@ -2104,7 +2104,7 @@ tbf_send_packet(struct vif *vifp, struct mbuf *m)
 		/* if physical interface option, extract the options and then send */
 		struct ip_moptions imo;
 
-		imo.imo_multicast_ifp = vifp->v_ifp;
+		imo.imo_multicast_if_index = if_get_index(vifp->v_ifp);
 		imo.imo_multicast_ttl = mtod(m, struct ip *)->ip_ttl - 1;
 		imo.imo_multicast_loop = 1;
 #ifdef RSVP_ISI

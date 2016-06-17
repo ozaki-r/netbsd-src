@@ -1532,7 +1532,7 @@ carp_multicast_cleanup(struct carp_softc *sc)
 		}
 	}
 	imo->imo_num_memberships = 0;
-	imo->imo_multicast_ifp = NULL;
+	imo->imo_multicast_if_index = 0;
 
 #ifdef INET6
 	while (!LIST_EMPTY(&im6o->im6o_memberships)) {
@@ -1801,7 +1801,7 @@ carp_join_multicast(struct carp_softc *sc)
 
 	imo->imo_membership[0] = tmpimo.imo_membership[0];
 	imo->imo_num_memberships = 1;
-	imo->imo_multicast_ifp = &sc->sc_if;
+	imo->imo_multicast_if_index = sc->sc_if.if_index;
 	imo->imo_multicast_ttl = CARP_DFLTTL;
 	imo->imo_multicast_loop = 0;
 	return (0);

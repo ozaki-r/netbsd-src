@@ -236,7 +236,7 @@ ip_output(struct mbuf *m0, struct mbuf *opt, struct route *ro, int flags,
 {
 	struct rtentry *rt;
 	struct ip *ip;
-	struct ifnet *ifp;
+	struct ifnet *ifp, *mifp = NULL;
 	struct mbuf *m = m0;
 	int hlen = sizeof (struct ip);
 	int len, error = 0;
@@ -258,6 +258,8 @@ ip_output(struct mbuf *m0, struct mbuf *opt, struct route *ro, int flags,
 	struct sockaddr *rdst = &u.dst;	/* real IP destination, as opposed
 					 * to the nexthop
 					 */
+	struct psref psref;
+	int bound;
 
 	len = 0;
 
@@ -331,8 +333,15 @@ ip_output(struct mbuf *m0, struct mbuf *opt, struct route *ro, int flags,
 		isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	} else if ((IN_MULTICAST(ip->ip_dst.s_addr) ||
 	    ip->ip_dst.s_addr == INADDR_BROADCAST) &&
-	    imo != NULL && imo->imo_multicast_ifp != NULL) {
-		ifp = imo->imo_multicast_ifp;
+	    imo != NULL && imo->imo_multicast_if_index != 0) {
+		bound = curlwp_bind();
+		ifp = mifp = if_get_byindex(imo->imo_multicast_if_index, &psref);
+		if (ifp == NULL) {
+			curlwp_bindx(bound);
+			IP_STATINC(IP_STAT_NOROUTE);
+			error = ENETUNREACH;
+			goto bad;
+		}
 		mtu = ifp->if_mtu;
 		IFP_TO_IA(ifp, ia);
 		isbroadcast = 0;
@@ -719,6 +728,10 @@ done:
 		KEY_FREESP(&sp);
 	}
 #endif
+	if (mifp != NULL) {
+		if_put(mifp, &psref);
+		curlwp_bindx(bound);
+	}
 	return error;
 bad:
 	m_freem(m);
@@ -1619,7 +1632,7 @@ ip_setmoptions(struct ip_moptions **pimo, const struct sockopt *sopt)
 		if (imo == NULL)
 			return ENOBUFS;
 
-		imo->imo_multicast_ifp = NULL;
+		imo->imo_multicast_if_index = 0;
 		imo->imo_multicast_addr.s_addr = INADDR_ANY;
 		imo->imo_multicast_ttl = IP_DEFAULT_MULTICAST_TTL;
 		imo->imo_multicast_loop = IP_DEFAULT_MULTICAST_LOOP;
@@ -1642,7 +1655,7 @@ ip_setmoptions(struct ip_moptions **pimo, const struct sockopt *sopt)
 		 * chosen every time a multicast packet is sent.
 		 */
 		if (in_nullhost(addr)) {
-			imo->imo_multicast_ifp = NULL;
+			imo->imo_multicast_if_index = 0;
 			break;
 		}
 		/*
@@ -1655,7 +1668,7 @@ ip_setmoptions(struct ip_moptions **pimo, const struct sockopt *sopt)
 			error = EADDRNOTAVAIL;
 			break;
 		}
-		imo->imo_multicast_ifp = ifp;
+		imo->imo_multicast_if_index = ifp->if_index;
 		if (ifindex)
 			imo->imo_multicast_addr = addr;
 		else
@@ -1693,7 +1706,7 @@ ip_setmoptions(struct ip_moptions **pimo, const struct sockopt *sopt)
 	/*
 	 * If all options have default values, no need to keep the mbuf.
 	 */
-	if (imo->imo_multicast_ifp == NULL &&
+	if (imo->imo_multicast_if_index == 0 &&
 	    imo->imo_multicast_ttl == IP_DEFAULT_MULTICAST_TTL &&
 	    imo->imo_multicast_loop == IP_DEFAULT_MULTICAST_LOOP &&
 	    imo->imo_num_memberships == 0) {
@@ -1711,20 +1724,27 @@ int
 ip_getmoptions(struct ip_moptions *imo, struct sockopt *sopt)
 {
 	struct in_addr addr;
-	struct in_ifaddr *ia;
 	uint8_t optval;
 	int error = 0;
 
 	switch (sopt->sopt_name) {
 	case IP_MULTICAST_IF:
-		if (imo == NULL || imo->imo_multicast_ifp == NULL)
+		if (imo == NULL || imo->imo_multicast_if_index == 0)
 			addr = zeroin_addr;
 		else if (imo->imo_multicast_addr.s_addr) {
 			/* return the value user has set */
 			addr = imo->imo_multicast_addr;
 		} else {
-			IFP_TO_IA(imo->imo_multicast_ifp, ia);
+			struct ifnet *ifp;
+			struct in_ifaddr *ia = NULL;
+			int s = pserialize_read_enter();
+
+			ifp = if_byindex(imo->imo_multicast_if_index);
+			if (ifp != NULL) {
+				IFP_TO_IA(ifp, ia);
+			}
 			addr = ia ? ia->ia_addr.sin_addr : zeroin_addr;
+			pserialize_read_exit(s);
 		}
 		error = sockopt_set(sopt, &addr, sizeof(addr));
 		break;

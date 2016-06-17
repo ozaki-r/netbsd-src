@@ -941,7 +941,7 @@ pfsyncioctl(struct ifnet *ifp, u_long cmd, void*  data)
 			}
 			if (imo->imo_num_memberships > 0) {
 				in_delmulti(imo->imo_membership[--imo->imo_num_memberships]);
-				imo->imo_multicast_ifp = NULL;
+				imo->imo_multicast_if_index = 0;
 			}
 			break;
 		}
@@ -961,7 +961,7 @@ pfsyncioctl(struct ifnet *ifp, u_long cmd, void*  data)
 
 		if (imo->imo_num_memberships > 0) {
 			in_delmulti(imo->imo_membership[--imo->imo_num_memberships]);
-			imo->imo_multicast_ifp = NULL;
+			imo->imo_multicast_if_index = 0;
 		}
 
 		if (sc->sc_sync_ifp &&
@@ -983,7 +983,7 @@ pfsyncioctl(struct ifnet *ifp, u_long cmd, void*  data)
 				return (ENOBUFS);
 			}
 			imo->imo_num_memberships++;
-			imo->imo_multicast_ifp = sc->sc_sync_ifp;
+			imo->imo_multicast_if_index = if_get_index(sc->sc_sync_ifp);
 			imo->imo_multicast_ttl = PFSYNC_DFLTTL;
 			imo->imo_multicast_loop = 0;
 		}

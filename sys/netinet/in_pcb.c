@@ -694,6 +694,8 @@ in_purgeifmcast(struct ip_moptions *imo, struct ifnet *ifp)
 {
 	int i, gap;
 
+	KASSERT(ifp != NULL);
+
 	if (imo == NULL)
 		return;
 
@@ -701,8 +703,8 @@ in_purgeifmcast(struct ip_moptions *imo, struct ifnet *ifp)
 	 * Unselect the outgoing interface if it is being
 	 * detached.
 	 */
-	if (imo->imo_multicast_ifp == ifp)
-		imo->imo_multicast_ifp = NULL;
+	if (imo->imo_multicast_if_index == ifp->if_index)
+		imo->imo_multicast_if_index = 0;
 
 	/*
 	 * Drop multicast group membership if we joined

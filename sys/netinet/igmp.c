@@ -618,7 +618,7 @@ igmp_sendpkt(struct in_multi *inm, int type)
 	m->m_data -= sizeof(struct ip);
 	m->m_len += sizeof(struct ip);
 
-	imo.imo_multicast_ifp = inm->inm_ifp;
+	imo.imo_multicast_if_index = if_get_index(inm->inm_ifp);
 	imo.imo_multicast_ttl = 1;
 #ifdef RSVP_ISI
 	imo.imo_multicast_vif = -1;
