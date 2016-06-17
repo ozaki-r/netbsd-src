@@ -454,7 +454,7 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 			sockaddr_in6_init(&dst_sa, &ip6->ip6_dst, 0, 0, 0);
 
 			src = in6_selectsrc(&dst_sa, NULL,
-			    NULL, &ro, NULL, NULL, &error);
+			    NULL, &ro, NULL, NULL, &error, NULL);
 			if (src == NULL) {
 				nd6log(LOG_DEBUG, "source can't be "
 				    "determined: dst=%s, error=%d\n",
@@ -944,7 +944,7 @@ nd6_na_output(
 	/*
 	 * Select a source whose scope is the same as that of the dest.
 	 */
-	src = in6_selectsrc(satosin6(dst), NULL, NULL, &ro, NULL, NULL, &error);
+	src = in6_selectsrc(satosin6(dst), NULL, NULL, &ro, NULL, NULL, &error, NULL);
 	if (src == NULL) {
 		nd6log(LOG_DEBUG, "source can't be "
 		    "determined: dst=%s, error=%d\n",

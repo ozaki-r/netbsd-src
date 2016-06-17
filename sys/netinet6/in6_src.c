@@ -124,9 +124,10 @@ int ip6_prefer_tempaddr = 0;
 
 static int selectroute(struct sockaddr_in6 *, struct ip6_pktopts *,
 	struct ip6_moptions *, struct route *, struct ifnet **,
-	struct rtentry **, int, int);
+	struct rtentry **, int, int, struct psref *);
 static int in6_selectif(struct sockaddr_in6 *, struct ip6_pktopts *,
-	struct ip6_moptions *, struct route *, struct ifnet **);
+	struct ip6_moptions *, struct route *, struct ifnet **,
+	struct psref *);
 
 static struct in6_addrpolicy *lookup_addrsel_policy(struct sockaddr_in6 *);
 
@@ -174,7 +175,7 @@ static struct in6_addrpolicy *match_addrsel_policy(struct sockaddr_in6 *);
 struct in6_addr *
 in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts, 
 	struct ip6_moptions *mopts, struct route *ro, struct in6_addr *laddr, 
-	struct ifnet **ifpp, int *errorp)
+	struct ifnet **ifpp, int *errorp, struct psref *psref)
 {
 	struct in6_addr dst;
 	struct ifnet *ifp = NULL;
@@ -188,6 +189,12 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 #if defined(MIP6) && NMIP > 0
 	u_int8_t ip6po_usecoa = 0;
 #endif /* MIP6 && NMIP > 0 */
+	struct psref local_psref;
+	struct in6_addr *ret_ia = NULL;
+	int bound = curlwp_bind();
+
+	KASSERT((ifpp != NULL && psref != NULL) ||
+	        (ifpp == NULL && psref == NULL));
 
 	dst = dstsock->sin6_addr; /* make a copy for local operation */
 	*errorp = 0;
@@ -201,9 +208,11 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 * to this function (e.g., for identifying the appropriate scope zone
 	 * ID).
 	 */
-	error = in6_selectif(dstsock, opts, mopts, ro, &ifp);
-	if (ifpp)
+	error = in6_selectif(dstsock, opts, mopts, ro, &ifp, &local_psref);
+	if (ifpp != NULL && ifp != NULL) {
 		*ifpp = ifp;
+		if_acquire(ifp, psref);
+	}
 
 	/*
 	 * If the source address is explicitly specified by the caller,
@@ -230,19 +239,20 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 		if (ifp) {
 			*errorp = in6_setscope(&srcsock.sin6_addr, ifp, NULL);
 			if (*errorp != 0)
-				return (NULL);
+				goto exit;
 		}
 
 		ia6 = (struct in6_ifaddr *)ifa_ifwithaddr((struct sockaddr *)(&srcsock));
 		if (ia6 == NULL ||
 		    (ia6->ia6_flags & (IN6_IFF_ANYCAST | IN6_IFF_NOTREADY))) {
 			*errorp = EADDRNOTAVAIL;
-			return (NULL);
+			goto exit;
 		}
 		pi->ipi6_addr = srcsock.sin6_addr; /* XXX: this overrides pi */
 		if (ifpp)
 			*ifpp = ifp;
-		return (&ia6->ia_addr.sin6_addr);
+		ret_ia = &ia6->ia_addr.sin6_addr;
+		goto exit;
 	}
 
 	/*
@@ -250,8 +260,10 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 * care at the moment whether in6_selectif() succeeded above, even
 	 * though it would eventually cause an error.
 	 */
-	if (laddr && !IN6_IS_ADDR_UNSPECIFIED(laddr))
-		return (laddr);
+	if (laddr && !IN6_IS_ADDR_UNSPECIFIED(laddr)) {
+		ret_ia = laddr;
+		goto exit;
+	}
 
 	/*
 	 * The outgoing interface is crucial in the general selection procedure
@@ -259,7 +271,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 */
 	if (ifp == NULL) {
 		*errorp = error;
-		return (NULL);
+		goto exit;
 	}
 
 	/*
@@ -281,7 +293,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 
 	*errorp = in6_setscope(&dst, ifp, &odstzone);
 	if (*errorp != 0)
-		return (NULL);
+		goto exit;
 
 	for (ia = in6_ifaddr; ia; ia = ia->ia_next) {
 		int new_scope = -1, new_matchlen = -1;
@@ -544,10 +556,15 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 
 	if ((ia = ia_best) == NULL) {
 		*errorp = EADDRNOTAVAIL;
-		return (NULL);
+		goto exit;
 	}
 
-	return (&ia->ia_addr.sin6_addr);
+	ret_ia = &ia->ia_addr.sin6_addr;
+exit:
+	if (ifp != NULL)
+		if_put(ifp, &local_psref);
+	curlwp_bindx(bound);
+	return ret_ia;
 }
 #undef REPLACE
 #undef BREAK
@@ -556,7 +573,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 static int
 selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts, 
 	struct ip6_moptions *mopts, struct route *ro, struct ifnet **retifp, 
-	struct rtentry **retrt, int clone, int norouteok)
+	struct rtentry **retrt, int clone, int norouteok, struct psref *psref)
 {
 	int error = 0;
 	struct ifnet *ifp = NULL;
@@ -564,6 +581,11 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	struct sockaddr_in6 *sin6_next;
 	struct in6_pktinfo *pi = NULL;
 	struct in6_addr *dst;
+	struct psref local_psref;
+#define PSREF	((psref == NULL) ? &local_psref : psref)
+
+	if (retrt == NULL)
+		KASSERT(psref == NULL);
 
 	dst = &dstsock->sin6_addr;
 
@@ -583,7 +605,7 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	/* If the caller specify the outgoing interface explicitly, use it. */
 	if (opts && (pi = opts->ip6po_pktinfo) != NULL && pi->ipi6_ifindex) {
 		/* XXX boundary check is assumed to be already done. */
-		ifp = if_byindex(pi->ipi6_ifindex);
+		ifp = if_get_byindex(pi->ipi6_ifindex, PSREF);
 		if (ifp != NULL &&
 		    (norouteok || retrt == NULL ||
 		    IN6_IS_ADDR_MULTICAST(dst))) {
@@ -592,8 +614,13 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 			 * multicast.
 			 */
 			goto done;
-		} else
+		} else {
+			if (ifp != NULL) {
+				if_put(ifp, PSREF);
+				ifp = NULL;
+			}
 			goto getroute;
+		}
 	}
 
 	/*
@@ -601,8 +628,7 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 * interface for the address is specified by the caller, use it.
 	 */
 	if (IN6_IS_ADDR_MULTICAST(dst) && mopts != NULL) {
-		/* XXX not MP-safe yet */
-		ifp = if_byindex(mopts->im6o_multicast_if_index);
+		ifp = if_get_byindex(mopts->im6o_multicast_if_index, PSREF);
 		if (ifp != NULL)
 			goto done; /* we do not need a route for multicast. */
 	}
@@ -636,6 +662,7 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 			goto done;
 		}
 		ifp = rt->rt_ifp;
+		if_acquire(ifp, PSREF);
 
 		/*
 		 * When cloning is required, try to allocate a route to the
@@ -671,8 +698,10 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 
 		if (rt == NULL)
 			error = EHOSTUNREACH;
-		else
+		else {
 			ifp = rt->rt_ifp;
+			if_acquire(ifp, PSREF);
+		}
 
 		/*
 		 * Check if the outgoing interface conflicts with
@@ -705,22 +734,28 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 
 	if (retifp != NULL)
 		*retifp = ifp;
+	else if (ifp != NULL)
+		if_put(ifp, PSREF);
 	if (retrt != NULL)
 		*retrt = rt;	/* rt may be NULL */
 
 	return (error);
+#undef PSREF
 }
 
 static int
 in6_selectif(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts, 
-	struct ip6_moptions *mopts, struct route *ro, struct ifnet **retifp)
+	struct ip6_moptions *mopts, struct route *ro, struct ifnet **retifp,
+	struct psref *psref)
 {
 	int error, clone;
 	struct rtentry *rt = NULL;
 
+	KASSERT(retifp != NULL);
+
 	clone = IN6_IS_ADDR_MULTICAST(&dstsock->sin6_addr) ? 0 : 1;
 	if ((error = selectroute(dstsock, opts, mopts, ro, retifp,
-	    &rt, clone, 1)) != 0) {
+	    &rt, clone, 1, psref)) != 0) {
 		return (error);
 	}
 
@@ -751,8 +786,12 @@ in6_selectif(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 * destination address (which should probably be one of our own
 	 * addresses.)
 	 */
-	if (rt && rt->rt_ifa && rt->rt_ifa->ifa_ifp)
+	if (rt && rt->rt_ifa && rt->rt_ifa->ifa_ifp) {
+		if (*retifp != NULL)
+			if_put(*retifp, psref);
 		*retifp = rt->rt_ifa->ifa_ifp;
+		if_acquire(*retifp, psref);
+	}
 
 	return (0);
 }
@@ -764,10 +803,10 @@ in6_selectif(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 int
 in6_selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts, 
 	struct ip6_moptions *mopts, struct route *ro, struct ifnet **retifp, 
-	struct rtentry **retrt, int clone)
+	struct rtentry **retrt, int clone, struct psref *psref)
 {
 	return selectroute(dstsock, opts, mopts, ro, retifp,
-	    retrt, clone, 0);
+	    retrt, clone, 0, psref);
 }
 
 /*

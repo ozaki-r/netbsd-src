@@ -438,6 +438,8 @@ in6_pcbconnect(void *v, struct sockaddr_in6 *sin6, struct lwp *l)
 #endif
 	struct sockaddr_in6 tmp;
 	struct vestigial_inpcb vestige;
+	struct psref psref;
+	int bound;
 
 	(void)&in6a;				/* XXX fool gcc */
 
@@ -478,6 +480,7 @@ in6_pcbconnect(void *v, struct sockaddr_in6 *sin6, struct lwp *l)
 	tmp = *sin6;
 	sin6 = &tmp;
 
+	bound = curlwp_bind();
 	/* Source address selection. */
 	if (IN6_IS_ADDR_V4MAPPED(&in6p->in6p_laddr) &&
 	    in6p->in6p_laddr.s6_addr32[3] == 0) {
@@ -512,23 +515,31 @@ in6_pcbconnect(void *v, struct sockaddr_in6 *sin6, struct lwp *l)
 		in6a = in6_selectsrc(sin6, in6p->in6p_outputopts,
 				     in6p->in6p_moptions,
 				     &in6p->in6p_route,
-				     &in6p->in6p_laddr, &ifp, &error);
+				     &in6p->in6p_laddr, &ifp, &error, &psref);
 		if (ifp && scope_ambiguous &&
 		    (error = in6_setscope(&sin6->sin6_addr, ifp, NULL)) != 0) {
+			if (ifp != NULL)
+				if_put(ifp, &psref);
+			curlwp_bindx(bound);
 			return(error);
 		}
 
 		if (in6a == NULL) {
+			if (ifp != NULL)
+				if_put(ifp, &psref);
+			curlwp_bindx(bound);
 			if (error == 0)
 				error = EADDRNOTAVAIL;
 			return (error);
 		}
 	}
 
-	if (ifp != NULL)
+	if (ifp != NULL) {
 		in6p->in6p_ip6.ip6_hlim = (u_int8_t)in6_selecthlim(in6p, ifp);
-	else
+		if_put(ifp, &psref);
+	} else
 		in6p->in6p_ip6.ip6_hlim = (u_int8_t)in6_selecthlim_rt(in6p);
+	curlwp_bindx(bound);
 
 	if (in6_pcblookup_connect(in6p->in6p_table, &sin6->sin6_addr,
 	    sin6->sin6_port,

@@ -226,14 +226,20 @@ udp6_output(struct in6pcb * const in6p, struct mbuf *m,
 		}
 
 		if (!IN6_IS_ADDR_V4MAPPED(faddr)) {
+			struct psref psref;
+
 			laddr = in6_selectsrc(sin6, optp,
 			    in6p->in6p_moptions,
 			    &in6p->in6p_route,
-			    &in6p->in6p_laddr, &oifp, &error);
+			    &in6p->in6p_laddr, &oifp, &error, &psref);
 			if (oifp && scope_ambiguous &&
 			    (error = in6_setscope(&sin6->sin6_addr,
-			    oifp, NULL)))
+			    oifp, NULL))) {
+				if_put(oifp, &psref);
 				goto release;
+			}
+			if (oifp != NULL)
+				if_put(oifp, &psref);
 		} else {
 			/*
 			 * XXX: freebsd[34] does not have in_selectsrc, but

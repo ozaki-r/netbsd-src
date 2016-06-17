@@ -2091,7 +2091,7 @@ icmp6_reflect(struct mbuf *m, size_t off)
 		sockaddr_in6_init(&sin6, &ip6->ip6_dst, 0, 0, 0);
 
 		memset(&ro, 0, sizeof(ro));
-		src = in6_selectsrc(&sin6, NULL, NULL, &ro, NULL, NULL, &e);
+		src = in6_selectsrc(&sin6, NULL, NULL, &ro, NULL, NULL, &e, NULL);
 		rtcache_free(&ro);
 		if (src == NULL) {
 			nd6log(LOG_DEBUG,

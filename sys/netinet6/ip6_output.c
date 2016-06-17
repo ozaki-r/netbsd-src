@@ -163,7 +163,7 @@ ip6_output(
 )
 {
 	struct ip6_hdr *ip6, *mhip6;
-	struct ifnet *ifp, *origifp;
+	struct ifnet *ifp, *origifp = NULL;
 	struct mbuf *m = m0;
 	int hlen, tlen, len, off;
 	bool tso;
@@ -185,7 +185,9 @@ ip6_output(
 #ifdef IPSEC
 	struct secpolicy *sp = NULL;
 #endif
-
+	struct psref psref;
+	int bound = curlwp_bind();
+	
 	memset(&ip6route, 0, sizeof(ip6route));
 
 #ifdef  DIAGNOSTIC
@@ -489,7 +491,7 @@ ip6_output(
 
 	sockaddr_in6_init(&dst_sa, &ip6->ip6_dst, 0, 0, 0);
 	if ((error = in6_selectroute(&dst_sa, opt, im6o, ro,
-	    &ifp, &rt, 0)) != 0) {
+	    &ifp, &rt, 0, &psref)) != 0) {
 		if (ifp != NULL)
 			in6_ifstat_inc(ifp, ifs6_out_discard);
 		goto bad;
@@ -522,9 +524,10 @@ ip6_output(
 	 * destination addresses.  We should use ia_ifp to support the
 	 * case of sending packets to an address of our own.
 	 */
-	if (ia != NULL && ia->ia_ifp)
+	if (ia != NULL && ia->ia_ifp) {
 		origifp = ia->ia_ifp;
-	else
+		if_acquire(origifp, &psref);
+	} else
 		origifp = ifp;
 
 	src0 = ip6->ip6_src;
@@ -976,6 +979,9 @@ done:
 		KEY_FREESP(&sp);
 #endif /* IPSEC */
 
+	if (origifp != NULL)
+		if_put(origifp, &psref);
+	curlwp_bindx(bound);
 
 	return (error);
 
@@ -2782,7 +2788,6 @@ ip6_setpktopt(int optname, u_char *buf, int len, struct ip6_pktopts *opt,
 #endif
 	case IPV6_PKTINFO:
 	{
-		struct ifnet *ifp = NULL;
 		struct in6_pktinfo *pktinfo;
 
 		if (len != sizeof(struct in6_pktinfo))
@@ -2810,9 +2815,14 @@ ip6_setpktopt(int optname, u_char *buf, int len, struct ip6_pktopts *opt,
 
 		/* Validate the interface index if specified. */
 		if (pktinfo->ipi6_ifindex) {
+			struct ifnet *ifp;
+			int s = pserialize_read_enter();
 			ifp = if_byindex(pktinfo->ipi6_ifindex);
-			if (ifp == NULL)
-				return (ENXIO);
+			if (ifp == NULL) {
+				pserialize_read_exit(s);
+				return ENXIO;
+			}
+			pserialize_read_exit(s);
 		}
 
 		/*

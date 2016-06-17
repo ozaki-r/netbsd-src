@@ -397,10 +397,10 @@ struct route;
 
 struct 	in6_addr *in6_selectsrc(struct sockaddr_in6 *,
 	struct ip6_pktopts *, struct ip6_moptions *, struct route *,
-	struct in6_addr *, struct ifnet **, int *);
+	struct in6_addr *, struct ifnet **, int *, struct psref *);
 int in6_selectroute(struct sockaddr_in6 *, struct ip6_pktopts *,
 	struct ip6_moptions *, struct route *, struct ifnet **,
-	struct rtentry **, int);
+	struct rtentry **, int, struct psref *);
 int	ip6_get_membership(const struct sockopt *, struct ifnet **, void *,
 	size_t);
 

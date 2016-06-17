@@ -2223,10 +2223,10 @@ if_get_byindex(u_int idx, struct psref *psref)
 }
 
 /*
- * XXX unsafe
+ *
  */
 void
-if_acquire_unsafe(struct ifnet *ifp, struct psref *psref)
+if_acquire(struct ifnet *ifp, struct psref *psref)
 {
 
 	KASSERT(ifp->if_index != 0);
