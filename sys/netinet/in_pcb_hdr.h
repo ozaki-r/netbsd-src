@@ -132,4 +132,7 @@ struct inpcbtable {
 #define	INP_BOUND		1
 #define	INP_CONNECTED		2
 
+typedef int (*pcb_overudp_cb_t)(struct mbuf **, int, struct socket *,
+    struct sockaddr *, void *);
+
 #endif /* !_NETINET_IN_PCB_HDR_H_ */

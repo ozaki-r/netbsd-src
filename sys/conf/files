@@ -197,6 +197,12 @@ include "crypto/nist_ctr_drbg/files.nist_ctr_drbg"
 # ChaCha-based fast PRNG
 include "crypto/cprng_fast/files.cprng_fast"
 
+# BLAKE2s, a cryptographic hash function optimized for 8- to 32-bit
+include "crypto/blake2/files.blake2s"
+
+# Various cryptography functions
+include "crypto/sodium/files.sodium"
+
 #
 # Kernel history/tracing. Old UVMHIST depends upon this.
 #
@@ -1434,6 +1440,7 @@ defpseudo carp:		ifnet, ether, arp
 defpseudodev l2tp:	ifnet, ether, arp
 defpseudo canloop:	ifnet
 defpseudo ipsecif:	ifnet		# avoid to confuse ipsec itself option
+defpseudo wg:		ifnet
 
 defpseudo sequencer
 defpseudo clockctl

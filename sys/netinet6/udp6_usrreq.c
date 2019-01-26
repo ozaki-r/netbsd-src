@@ -547,6 +547,30 @@ udp6_realinput(int af, struct sockaddr_in6 *src, struct sockaddr_in6 *dst,
 		}
 #endif
 
+		if (in6p->in6p_overudp_cb != NULL) {
+			int ret;
+			ret = in6p->in6p_overudp_cb(mp, off, in6p->in6p_socket,
+			    sin6tosa(src), in6p->in6p_overudp_arg);
+			switch (ret) {
+			case -1: /* Error, m was freed */
+				rcvcnt = -1;
+				goto bad;
+
+			case 1: /* Foo over UDP */
+				KASSERT(*mp == NULL);
+				rcvcnt++;
+				goto bad;
+
+			case 0: /* plain UDP */
+			default: /* Unexpected */
+				/*
+				 * Normal UDP processing will take place,
+				 * m may have changed.
+				 */
+				break;
+			}
+		}
+
 		udp6_sendup(m, off, sin6tosa(src), in6p->in6p_socket);
 		rcvcnt++;
 	}

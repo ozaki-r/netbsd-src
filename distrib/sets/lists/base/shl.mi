@@ -788,6 +788,9 @@
 ./usr/lib/librumpnet_vlan.so			base-rump-shlib		rump
 ./usr/lib/librumpnet_vlan.so.0			base-rump-shlib		rump
 ./usr/lib/librumpnet_vlan.so.0.0		base-rump-shlib		rump
+./usr/lib/librumpnet_wireguard.so		base-rump-shlib		rump
+./usr/lib/librumpnet_wireguard.so.0		base-rump-shlib		rump
+./usr/lib/librumpnet_wireguard.so.0.0		base-rump-shlib		rump
 ./usr/lib/librumpres.so				base-rumpclient-shlib	compatfile,rump
 ./usr/lib/librumpres.so.0			base-rumpclient-shlib	compatfile,rump
 ./usr/lib/librumpres.so.0.0			base-rumpclient-shlib	compatfile,rump

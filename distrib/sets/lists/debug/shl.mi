@@ -267,6 +267,7 @@
 ./usr/libdata/debug/usr/lib/librumpnet_tun.so.0.0.debug		comp-rump-debug	debug,rump
 ./usr/libdata/debug/usr/lib/librumpnet_virtif.so.0.0.debug	comp-rump-debug	debug,rump
 ./usr/libdata/debug/usr/lib/librumpnet_vlan.so.0.0.debug	comp-rump-debug	debug,rump
+./usr/libdata/debug/usr/lib/librumpnet_wireguard.so.0.0.debug	comp-rump-debug	debug,rump
 ./usr/libdata/debug/usr/lib/librumpres.so.0.0.debug		comp-rump-debug	debug,compatfile,rump
 ./usr/libdata/debug/usr/lib/librumpuser.so.0.1.debug		comp-rump-debug	debug,compatfile,rump
 ./usr/libdata/debug/usr/lib/librumpvfs.so.0.0.debug		comp-rump-debug	debug,compatfile,rump
