@@ -1,0 +1,9 @@
+#	$NetBSD$
+
+#defflag		BLAKE2S
+
+define		blake2s
+#makeoptions	blake2s	CPPFLAGS+="-I$S/external/cc0/libb2/include -Wno-cast-qual -DSUFFIX="
+makeoptions	blake2s	"CPPFLAGS.blake2s-ref.c"+="-I$S/external/cc0/libb2/include -Wno-cast-qual -DSUFFIX="
+
+file	external/cc0/libb2/dist/src/blake2s-ref.c
