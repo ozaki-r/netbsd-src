@@ -355,6 +355,7 @@
 ./usr/tests/net/npf
 ./usr/tests/net/route
 ./usr/tests/net/sys
+./usr/tests/net/wireguard
 ./usr/tests/rump
 ./usr/tests/rump/modautoload
 ./usr/tests/rump/rumpkern
