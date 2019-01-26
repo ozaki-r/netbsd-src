@@ -1,56 +1,85 @@
-NetBSD
-------
+# In-kernel implementation of WireGuard for NetBSD
 
-NetBSD is a free, fast, secure, and highly portable Unix-like Open
-Source operating system.  It is available for a [wide range of
-platforms](https://wiki.NetBSD.org/ports/), from large-scale servers
-and powerful desktop systems to handheld and embedded devices.
+## How to build
 
-Building
---------
+1. clone the repository and checkout `wireguard` branch,
+2. add the following options to your kernel config, and
+3. build your kenrel, `wgconfig` and `wg-keygen`.
 
-You can cross-build NetBSD from most UNIX-like operating systems.
-To build for amd64 (x86_64), in the src directory:
+### kernel options
 
-    ./build.sh -U -u -j4 -m amd64 -O ~/obj release
+    options         LIBSODIUM
+    options         BLAKE2S
+    pseudo-device   wg
 
-Additional build information available in the [BUILDING](BUILDING) file.
+## How to use
 
-Binaries
---------
+1. create and setup a WireGuard interface,
+2. generate a pair of private and pubkey keys by using `wg-keygen`,
+3. configure the interface by using `wgconfig`, and
+4. configure a peer on the interface by using `wgconfig`.
 
-- [Daily builds](https://nycdn.netbsd.org/pub/NetBSD-daily/HEAD/latest/)
-- [Releases](https://cdn.netbsd.org/pub/NetBSD/)
+The following intsructions describe a basic usage of the implementation.
 
-Testing
--------
+    # Create and setup an interface
+    ifconfig wg0 create
+    ifconfig wg0 inet 10.0.0.1/24
+    route add -net 10.0.0.0/24 -link wg0 -iface
+    
+    # Generate a pair of private and pubkey keys
+    wg-keygen > ./privkey
+    cat ./privkey | wg-keygen --pub > ./pubkey
+    
+    # Configure the interface
+    wgconfig wg0 set private-key ./privkey
+    wgconfig wg0 set listen-port 52428
+    
+    # Add a peer
+    wgconfig wg0 add peer peer0 "2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs=" --endpoint=192.168,0.2:52428 --allowed-ips=10.0.0.0/24
+    
+    # Try to send packets to the peer
+    ping 10.0.0.2
+    
+    # Delete the peer
+    wgconfig wg0 delete peer peer0
 
-On a running NetBSD system:
+Note that you can omit `--endpoint=` option if the instance doesn't know
+peer's endpoints in advance, i.e., it acts as a server.  In that case,
+the instance can establish a secure session only if a peer, which acts
+a client, starts handshake of a session to the instance.
 
-    cd /usr/tests; atf-run | atf-report
+## CAVEATS
 
-Troubleshooting
----------------
+- The implementation is heavily under development and should not be used it in production systems
+- The `wireguard` branch will be rebased sometimes to track the tip of the NetBSD repository
 
-- Send bugs and patches [via web form](https://www.netbsd.org/cgi-bin/sendpr.cgi?gndb=netbsd).
-- Subscribe to the [mailing lists](https://www.netbsd.org/mailinglists/).
-  The [netbsd-users](https://netbsd.org/mailinglists/#netbsd-users) list is a good choice for many problems; watch [current-users](https://netbsd.org/mailinglists/#current-users) if you follow the bleeding edge of NetBSD-current.
-- Join the community IRC channel [#netbsd @ freenode](https://webchat.freenode.net/?channels=#netbsd).
+## For developers
 
-Latest sources
---------------
+### Debug options
 
-To fetch the main CVS repository:
+There are four debug options:
+- `WG_DEBUG_LOG` outputs debug logs
+- `WG_DEBUG_TRACE` outputs trace logs
+- `WG_DEBUG_DUMP` outputs hash values, etc.
+- `WG_DEBUG_PARAMS` makes some internal parameters configurable for testing and debugging
 
-    cvs -d anoncvs@anoncvs.NetBSD.org:/cvsroot checkout -P src
+You can enable all options at once by `WG_DEBUG`.
 
-To work in the Git mirror, which is updated every few hours from CVS:
+### ATF tests
 
-    git clone https://github.com/NetBSD/src.git
+There is a bunch of ATF tests.  Build and install rump libraries and tests, then run:
 
-Additional Links
-----------------
+    cd /usr/tests; atf-run net/wireguard | atf-report
 
-- [The NetBSD Guide](https://www.netbsd.org/docs/guide/en/)
-- [NetBSD manual pages](http://man.netbsd.org/)
-- [NetBSD Cross-Reference](https://nxr.netbsd.org/)
+If set `ATF_WIREGUARD_INTEROPERABILITY=yes`, `t_interoperability` tests
+with a peer outside of rump kernels.  See `tests/net/wireguard/t_interoperability.sh`
+to know how to set up the peer.
+
+## Links
+
+- [NetBSD](http://www.netbsd.org/)
+- [WireGuard](https://www.wireguard.com)
+
+## Author
+
+- Ryota Ozaki
