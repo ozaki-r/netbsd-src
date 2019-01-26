@@ -87,6 +87,8 @@ void udp_init(void);
 void udp_init_common(void);
 void udp_input(struct mbuf *, int, int);
 int udp_output(struct mbuf *, struct inpcb *, struct mbuf *, struct lwp *);
+int udp_send(struct socket *, struct mbuf *, struct sockaddr *,
+    struct mbuf *, struct lwp *);
 int udp_input_checksum(int af, struct mbuf *, const struct udphdr *, int, int);
 void udp_statinc(u_int);
 #endif /* _KERNEL */

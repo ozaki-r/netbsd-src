@@ -96,6 +96,8 @@ struct inpcb {
 	uint8_t	  inp_ip_minttl;
 	bool      inp_bindportonsend;
 	struct    in_addr inp_prefsrcip; /* preferred src IP when wild  */
+	pcb_overudp_cb_t inp_overudp_cb;
+	void      *inp_overudp_arg;
 };
 
 #define	inp_faddr	inp_ip.ip_dst
@@ -163,6 +165,14 @@ void	in_setsockaddr(struct inpcb *, struct sockaddr_in *);
 struct rtentry *
 	in_pcbrtentry(struct inpcb *);
 void	in_pcbrtentry_unref(struct rtentry *, struct inpcb *);
+
+static inline void
+in_pcb_register_overudp_cb(struct inpcb *inp, pcb_overudp_cb_t cb, void *arg)
+{
+
+	inp->inp_overudp_cb = cb;
+	inp->inp_overudp_arg = arg;
+}
 #endif
 
 #endif /* !_NETINET_IN_PCB_H_ */

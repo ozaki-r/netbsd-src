@@ -244,6 +244,7 @@
 ./usr/lib/librumpnet_tun_pic.a			comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_virtif_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_vlan_pic.a			comp-c-piclib		picinstall,rump
+./usr/lib/librumpnet_wireguard_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpres_pic.a			comp-c-piclib		compatfile,picinstall,rump
 ./usr/lib/librumpuser_pic.a			comp-c-piclib		compatfile,picinstall,rump
 ./usr/lib/librumpvfs_aio_pic.a			comp-c-piclib		picinstall,rump

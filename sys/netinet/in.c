@@ -145,7 +145,6 @@ __KERNEL_RCSID(0, "$NetBSD: in.c,v 1.233 2018/11/29 09:54:22 ozaki-r Exp $");
 #endif
 
 static u_int	in_mask2len(struct in_addr *);
-static void	in_len2mask(struct in_addr *, u_int);
 static int	in_lifaddr_ioctl(struct socket *, u_long, void *,
 	struct ifnet *);
 
@@ -380,7 +379,7 @@ in_mask2len(struct in_addr *mask)
 	return x * NBBY + y;
 }
 
-static void
+void
 in_len2mask(struct in_addr *mask, u_int len)
 {
 	u_int i;
