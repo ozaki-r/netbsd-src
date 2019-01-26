@@ -1,0 +1,3 @@
+#	$NetBSD$
+
+include "external/cc0/libb2/conf/files.blake2s"
