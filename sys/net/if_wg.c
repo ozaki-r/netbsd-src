@@ -2055,6 +2055,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	success = m_ensure_contig(&m, sizeof(*wgmd) + encrypted_len);
 	if (success) {
 		encrypted_buf = mtod(m, char *) + sizeof(*wgmd);
+		wgmd = mtod(m, struct wg_msg_data *);
 	} else {
 		encrypted_buf = kmem_intr_alloc(encrypted_len, KM_NOSLEEP);
 		if (encrypted_buf == NULL) {
@@ -2093,7 +2094,9 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	if (wgs->wgs_recv_counter != 0 &&
 	    wgmd->wgmd_counter <= wgs->wgs_recv_counter) {
 		WG_LOG_RATECHECK(&wgp->wgp_ppsratecheck, LOG_DEBUG,
-		    "wgmd_counter is equal to or smaller than wgs_recv_counter\n");
+		    "wgmd_counter is equal to or smaller than wgs_recv_counter:"
+		    " %"PRIu64" <= %"PRIu64"\n", wgmd->wgmd_counter,
+		    wgs->wgs_recv_counter);
 		m_freem(n);
 		goto out;
 	}
@@ -2998,6 +3001,7 @@ wg_fill_msg_data(struct wg_softc *wg, struct wg_peer *wgp,
 	/* [W] 5.4.6: msg.counter := Nm^send */
 	/* [W] 5.4.6: Nm^send := Nm^send + 1 */
 	wgmd->wgmd_counter = atomic_inc_64_nv(&wgs->wgs_send_counter) - 1;
+	WG_DLOG("counter=%"PRIu64"\n", wgmd->wgmd_counter);
 }
 
 static int
