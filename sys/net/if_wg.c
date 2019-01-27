@@ -324,9 +324,10 @@ struct wg_session {
 
 	int		wgs_state;
 #define WGS_STATE_UNKNOWN	0
-#define WGS_STATE_INITIALIZING	1
-#define WGS_STATE_ESTABLISHED	2
-#define WGS_STATE_DESTROYING	3
+#define WGS_STATE_INIT_ACTIVE	1
+#define WGS_STATE_INIT_PASSIVE	2
+#define WGS_STATE_ESTABLISHED	3
+#define WGS_STATE_DESTROYING	4
 
 	time_t		wgs_time_established;
 	time_t		wgs_time_last_data_sent;
@@ -1172,12 +1173,16 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 		/* XXX should wait? */
 		goto out_wgp;
 	}
-	if (wgs->wgs_state == WGS_STATE_INITIALIZING) {
-		WG_TRACE("Sesssion already initializing");
+	if (wgs->wgs_state == WGS_STATE_INIT_ACTIVE) {
+		WG_TRACE("Sesssion already initializing, ignoring the message");
 		mutex_exit(wgs->wgs_lock);
 		goto out_wgp;
 	}
-	wgs->wgs_state = WGS_STATE_INITIALIZING;
+	if (wgs->wgs_state == WGS_STATE_INIT_PASSIVE) {
+		WG_TRACE("Sesssion already initializing, destroying old states");
+		wg_clear_states(wgs);
+	}
+	wgs->wgs_state = WGS_STATE_INIT_PASSIVE;
 	reset_state_on_error = true;
 	wg_get_session(wgs, &psref_session);
 	mutex_exit(wgs->wgs_lock);
@@ -1278,7 +1283,7 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 out:
 	if (reset_state_on_error) {
 		mutex_enter(wgs->wgs_lock);
-		KASSERT(wgs->wgs_state == WGS_STATE_INITIALIZING);
+		KASSERT(wgs->wgs_state == WGS_STATE_INIT_PASSIVE);
 		wgs->wgs_state = WGS_STATE_UNKNOWN;
 		mutex_exit(wgs->wgs_lock);
 	}
@@ -1373,12 +1378,16 @@ wg_send_handshake_initiation_message(struct wg_softc *wg, struct wg_peer *wgp)
 		/* XXX should wait? */
 		return EBUSY;
 	}
-	if (wgs->wgs_state == WGS_STATE_INITIALIZING) {
-		WG_TRACE("Sesssion already initializing");
+	if (wgs->wgs_state == WGS_STATE_INIT_ACTIVE) {
+		WG_TRACE("Sesssion already initializing, skip starting a new one");
 		mutex_exit(wgs->wgs_lock);
 		return EBUSY;
 	}
-	wgs->wgs_state = WGS_STATE_INITIALIZING;
+	if (wgs->wgs_state == WGS_STATE_INIT_PASSIVE) {
+		WG_TRACE("Sesssion already initializing, destroying old states");
+		wg_clear_states(wgs);
+	}
+	wgs->wgs_state = WGS_STATE_INIT_ACTIVE;
 	wg_get_session(wgs, &psref);
 	mutex_exit(wgs->wgs_lock);
 
@@ -1397,7 +1406,7 @@ wg_send_handshake_initiation_message(struct wg_softc *wg, struct wg_peer *wgp)
 		wg_schedule_handshake_timeout_timer(wgp);
 	} else {
 		mutex_enter(wgs->wgs_lock);
-		KASSERT(wgs->wgs_state == WGS_STATE_INITIALIZING);
+		KASSERT(wgs->wgs_state == WGS_STATE_INIT_ACTIVE);
 		wgs->wgs_state = WGS_STATE_UNKNOWN;
 		mutex_exit(wgs->wgs_lock);
 	}
@@ -2313,9 +2322,13 @@ wg_process_peer_tasks(struct wg_softc *wg)
 		tasks = atomic_swap_uint(&wgp->wgp_tasks, 0);
 		KASSERT(tasks != 0);
 
+		WG_DLOG("tasks=%x\n", tasks);
+
 		if (ISSET(tasks, WGP_TASK_SEND_INIT_MESSAGE)) {
 			struct psref _psref;
 			struct wg_session *wgs;
+
+			WG_TRACE("WGP_TASK_SEND_INIT_MESSAGE");
 			wgs = wg_get_stable_session(wgp, &_psref);
 			if (wgs->wgs_state == WGS_STATE_UNKNOWN) {
 				wg_put_session(wgs, &_psref);
@@ -2324,12 +2337,13 @@ wg_process_peer_tasks(struct wg_softc *wg)
 				wg_put_session(wgs, &_psref);
 				/* rekey */
 				wgs = wg_get_unstable_session(wgp, &_psref);
-				if (wgs->wgs_state == WGS_STATE_UNKNOWN)
+				if (wgs->wgs_state != WGS_STATE_INIT_ACTIVE)
 					wg_send_handshake_initiation_message(wg, wgp);
 				wg_put_session(wgs, &_psref);
 			}
 		}
 		if (ISSET(tasks, WGP_TASK_ENDPOINT_CHANGED)) {
+			WG_TRACE("WGP_TASK_ENDPOINT_CHANGED");
 			mutex_enter(wgp->wgp_lock);
 			if (wgp->wgp_endpoint_changing) {
 				pserialize_perform(wg_psz);
@@ -2344,12 +2358,16 @@ wg_process_peer_tasks(struct wg_softc *wg)
 		if (ISSET(tasks, WGP_TASK_SEND_KEEPALIVE_MESSAGE)) {
 			struct psref _psref;
 			struct wg_session *wgs;
+
+			WG_TRACE("WGP_TASK_SEND_KEEPALIVE_MESSAGE");
 			wgs = wg_get_stable_session(wgp, &_psref);
 			wg_send_keepalive_message(wgp, wgs);
 			wg_put_session(wgs, &_psref);
 		}
 		if (ISSET(tasks, WGP_TASK_DESTROY_PREV_SESSION)) {
 			struct wg_session *wgs;
+
+			WG_TRACE("WGP_TASK_DESTROY_PREV_SESSION");
 			mutex_enter(wgp->wgp_lock);
 			wgs = wgp->wgp_session_unstable;
 			mutex_enter(wgs->wgs_lock);
@@ -2597,10 +2615,10 @@ wg_session_hit_limits(struct wg_session *wgs)
 	 */
 	KASSERT(wgs->wgs_time_established != 0);
 	if ((time_uptime - wgs->wgs_time_established) > wg_reject_after_time) {
-		WG_DLOG("The session hits REJECT_AFTER_TIME");
+		WG_DLOG("The session hits REJECT_AFTER_TIME\n");
 		return true;
 	} else if (wgs->wgs_send_counter > wg_reject_after_messages) {
-		WG_DLOG("The session hits REJECT_AFTER_MESSAGES");
+		WG_DLOG("The session hits REJECT_AFTER_MESSAGES\n");
 		return true;
 	}
 
@@ -2622,7 +2640,7 @@ wg_peer_softint(void *arg)
 		goto out;
 	}
 	if (wg_session_hit_limits(wgs)) {
-		/* Should do something? */
+		wg_schedule_peer_task(wgp, WGP_TASK_SEND_INIT_MESSAGE);
 		goto out;
 	}
 	WG_TRACE("running");
@@ -2664,7 +2682,7 @@ wg_handshake_timeout_timer(void *arg)
 
 	KASSERT(wgp->wgp_handshake_start_time != 0);
 	wgs = wg_get_unstable_session(wgp, &psref);
-	KASSERT(wgs->wgs_state == WGS_STATE_INITIALIZING);
+	KASSERT(wgs->wgs_state == WGS_STATE_INIT_ACTIVE);
 
 	/* [W] 6.4 Handshake Initiation Retransmission */
 	if ((time_uptime - wgp->wgp_handshake_start_time) >
@@ -3435,7 +3453,7 @@ wg_alloc_prop_buf(char **_buf, struct ifdrv *ifd)
 	int error;
 	char *buf;
 
-	WG_DLOG("buf=%p, len=%u\n", ifd->ifd_data, ifd->ifd_buflen);
+	WG_DLOG("buf=%p, len=%lu\n", ifd->ifd_data, ifd->ifd_len);
 	buf = kmem_alloc(ifd->ifd_len + 1, KM_SLEEP);
 	error = copyin(ifd->ifd_data, buf, ifd->ifd_len);
 	if (error != 0)
