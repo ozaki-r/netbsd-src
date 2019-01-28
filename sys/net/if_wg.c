@@ -429,6 +429,7 @@ struct wg_peer {
 
 	callout_t		wgp_rekey_timer;
 	callout_t		wgp_handshake_timeout_timer;
+	callout_t		wgp_session_dtor_timer;
 
 	time_t			wgp_handshake_start_time;
 
@@ -522,6 +523,7 @@ static struct wg_session *
 		    const uint32_t, struct psref *);
 
 static void	wg_schedule_rekey_timer(struct wg_peer *);
+static void	wg_schedule_session_dtor_timer(struct wg_peer *);
 
 static bool	wg_is_underload(struct wg_softc *, struct wg_peer *, int);
 static void	wg_calculate_keys(struct wg_session *, const bool);
@@ -1684,11 +1686,8 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 	if (wgs_prev->wgs_state != WGS_STATE_UNKNOWN) {
 		KASSERT(wgs_prev->wgs_state == WGS_STATE_ESTABLISHED);
 		wgs_prev->wgs_state = WGS_STATE_DESTROYING;
-		pserialize_perform(wg_psz);
-		psref_target_destroy(&wgs_prev->wgs_psref, wg_psref_class);
-		psref_target_init(&wgs_prev->wgs_psref, wg_psref_class);
-		wg_clear_states(wgs_prev);
-		wgs_prev->wgs_state = WGS_STATE_UNKNOWN;
+		/* We can't the old session immediately */
+		wg_schedule_session_dtor_timer(wgp);
 	}
 	mutex_exit(wgs_prev->wgs_lock);
 
@@ -2024,6 +2023,47 @@ wg_validate_route(struct wg_softc *wg, struct wg_peer *wgp_expected,
 }
 
 static void
+wg_session_dtor_timer(void *arg)
+{
+	struct wg_peer *wgp = arg;
+	struct wg_session *wgs;
+	struct psref psref;
+	bool received, timeout;
+
+	WG_TRACE("enter");
+
+	mutex_enter(wgp->wgp_lock);
+	if (__predict_false(wgp->wgp_state == WGP_STATE_DESTROYING)) {
+		mutex_exit(wgp->wgp_lock);
+		return;
+	}
+	mutex_exit(wgp->wgp_lock);
+
+	wgs = wg_get_stable_session(wgp, &psref);
+	received = wgs->wgs_recv_counter != 0;
+	wg_put_session(wgs, &psref);
+	wgs = wg_get_unstable_session(wgp, &psref);
+	timeout = (time_uptime - wgs->wgs_time_established) > wg_reject_after_time;
+	wg_put_session(wgs, &psref);
+
+	/*
+	 * Destroy if the peer uses a new session or the old session has surely
+	 * expired.
+	 */
+	if (received || timeout)
+		wg_schedule_peer_task(wgp, WGP_TASK_DESTROY_PREV_SESSION);
+	else
+		wg_schedule_session_dtor_timer(wgp);
+}
+
+static void
+wg_schedule_session_dtor_timer(struct wg_peer *wgp)
+{
+
+	callout_schedule(&wgp->wgp_session_dtor_timer, hz);
+}
+
+static void
 wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
     const struct sockaddr *src)
 {
@@ -2158,7 +2198,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 
 		wgs_prev->wgs_state = WGS_STATE_DESTROYING;
 		/* We can't wait here (in softint) */
-		wg_schedule_peer_task(wgp, WGP_TASK_DESTROY_PREV_SESSION);
+		wg_schedule_session_dtor_timer(wgp);
 		mutex_exit(wgs_prev->wgs_lock);
 
 		/* Anyway run a softint to flush pending packets */
@@ -2724,6 +2764,9 @@ wg_alloc_peer(struct wg_softc *wg)
 	callout_init(&wgp->wgp_handshake_timeout_timer, CALLOUT_MPSAFE);
 	callout_setfunc(&wgp->wgp_handshake_timeout_timer,
 	    wg_handshake_timeout_timer, wgp);
+	callout_init(&wgp->wgp_session_dtor_timer, CALLOUT_MPSAFE);
+	callout_setfunc(&wgp->wgp_session_dtor_timer,
+	    wg_session_dtor_timer, wgp);
 	PSLIST_ENTRY_INIT(wgp, wgp_peerlist_entry);
 	wgp->wgp_endpoint_changing = false;
 	wgp->wgp_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NONE);
@@ -2778,6 +2821,7 @@ wg_destroy_peer(struct wg_peer *wgp)
 	softint_disestablish(wgp->wgp_si);
 	callout_halt(&wgp->wgp_rekey_timer, NULL);
 	callout_halt(&wgp->wgp_handshake_timeout_timer, NULL);
+	callout_halt(&wgp->wgp_session_dtor_timer, NULL);
 
 	wgs = wgp->wgp_session_unstable;
 	psref_target_destroy(&wgs->wgs_psref, wg_psref_class);
