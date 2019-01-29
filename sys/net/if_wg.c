@@ -2176,7 +2176,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	}
 	n = NULL;
 
-	if (wgs->wgs_state != WGS_STATE_ESTABLISHED) {
+	if (wgs->wgs_state == WGS_STATE_INIT_PASSIVE) {
 		struct wg_session *wgs_prev;
 
 		KASSERT(wgs == wgp->wgp_session_unstable);
