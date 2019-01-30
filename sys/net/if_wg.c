@@ -2208,9 +2208,14 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 		wgp->wgp_last_sent_cookie_valid = false;
 		mutex_exit(wgp->wgp_lock);
 
-		wgs_prev->wgs_state = WGS_STATE_DESTROYING;
-		/* We can't wait here (in softint) */
-		wg_schedule_session_dtor_timer(wgp);
+		if (wgs_prev->wgs_state == WGS_STATE_ESTABLISHED) {
+			wgs_prev->wgs_state = WGS_STATE_DESTROYING;
+			/* We can't wait here (in softint) */
+			wg_schedule_session_dtor_timer(wgp);
+		} else {
+			wg_clear_states(wgs_prev);
+			wgs_prev->wgs_state = WGS_STATE_UNKNOWN;
+		}
 		mutex_exit(wgs_prev->wgs_lock);
 
 		/* Anyway run a softint to flush pending packets */
