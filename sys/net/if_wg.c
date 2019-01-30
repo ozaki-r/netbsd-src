@@ -2053,7 +2053,7 @@ wg_session_dtor_timer(void *arg)
 	if (received || timeout)
 		wg_schedule_peer_task(wgp, WGP_TASK_DESTROY_PREV_SESSION);
 	else
-		wg_schedule_session_dtor_timer(wgp);
+		callout_schedule(&wgp->wgp_session_dtor_timer, 5 * hz);
 }
 
 static void
