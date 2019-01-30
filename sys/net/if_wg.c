@@ -524,6 +524,7 @@ static struct wg_session *
 
 static void	wg_schedule_rekey_timer(struct wg_peer *);
 static void	wg_schedule_session_dtor_timer(struct wg_peer *);
+static void	wg_stop_session_dtor_timer(struct wg_peer *);
 
 static bool	wg_is_underload(struct wg_softc *, struct wg_peer *, int);
 static void	wg_calculate_keys(struct wg_session *, const bool);
@@ -1170,10 +1171,14 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 
 	wgs = wg_lock_unstable_session(wgp);
 	if (wgs->wgs_state == WGS_STATE_DESTROYING) {
-		WG_TRACE("Session destroying");
-		mutex_exit(wgs->wgs_lock);
-		/* XXX should wait? */
-		goto out_wgp;
+		/*
+		 * We can assume that the peer doesn't have an established
+		 * session, so clear it now.
+		 */
+		WG_TRACE("Session destroying, but force to clear");
+		wg_stop_session_dtor_timer(wgp);
+		wg_clear_states(wgs);
+		wgs->wgs_state = WGS_STATE_UNKNOWN;
 	}
 	if (wgs->wgs_state == WGS_STATE_INIT_ACTIVE) {
 		WG_TRACE("Sesssion already initializing, ignoring the message");
@@ -2061,6 +2066,13 @@ wg_schedule_session_dtor_timer(struct wg_peer *wgp)
 {
 
 	callout_schedule(&wgp->wgp_session_dtor_timer, hz);
+}
+
+static void
+wg_stop_session_dtor_timer(struct wg_peer *wgp)
+{
+
+	callout_halt(&wgp->wgp_session_dtor_timer, NULL);
 }
 
 static void
@@ -3088,13 +3100,12 @@ wg_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	struct psref psref_wgs;
 	struct wg_session *wgs;
 	wgs = wg_get_stable_session(wgp, &psref_wgs);
-	if (wgs->wgs_state == WGS_STATE_ESTABLISHED) {
-		if (!wg_session_hit_limits(wgs)) {
-			kpreempt_disable();
-			softint_schedule(wgp->wgp_si);
-			kpreempt_enable();
-			WG_TRACE("softint scheduled");
-		}
+	if (wgs->wgs_state == WGS_STATE_ESTABLISHED &&
+	    !wg_session_hit_limits(wgs)) {
+		kpreempt_disable();
+		softint_schedule(wgp->wgp_si);
+		kpreempt_enable();
+		WG_TRACE("softint scheduled");
 	} else {
 		wg_schedule_peer_task(wgp, WGP_TASK_SEND_INIT_MESSAGE);
 		WG_TRACE("softint NOT scheduled");
