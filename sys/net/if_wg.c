@@ -510,6 +510,7 @@ static int	wg_send_cookie_message(struct wg_softc *, struct wg_peer *,
 		    const uint32_t, const uint8_t [], const struct sockaddr *);
 static int	wg_send_handshake_response_message(struct wg_softc *,
 		    struct wg_peer *, const struct wg_msg_init *);
+static void	wg_send_keepalive_message(struct wg_peer *, struct wg_session *);
 
 static struct wg_peer *
 		wg_pick_peer_by_sa(struct wg_softc *, const struct sockaddr *,
@@ -1681,6 +1682,13 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 	mutex_exit(wgp->wgp_lock);
 
 	wg_schedule_rekey_timer(wgp);
+
+	/*
+	 * Send something immediately (same as the official implementation)
+	 * XXX if there are pending data packets, we don't need to send
+	 *     a keepalive message.
+	 */
+	wg_send_keepalive_message(wgp, wgs);
 
 	/* Anyway run a softint to flush pending packets */
 	kpreempt_disable();
