@@ -1696,10 +1696,9 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 	kpreempt_enable();
 	WG_TRACE("softint scheduled");
 
-	if (wgs_prev->wgs_state != WGS_STATE_UNKNOWN) {
-		KASSERT(wgs_prev->wgs_state == WGS_STATE_ESTABLISHED);
+	if (wgs_prev->wgs_state == WGS_STATE_ESTABLISHED) {
 		wgs_prev->wgs_state = WGS_STATE_DESTROYING;
-		/* We can't the old session immediately */
+		/* We can't destroy the old session immediately */
 		wg_schedule_session_dtor_timer(wgp);
 	}
 	mutex_exit(wgs_prev->wgs_lock);
@@ -2039,9 +2038,6 @@ static void
 wg_session_dtor_timer(void *arg)
 {
 	struct wg_peer *wgp = arg;
-	struct wg_session *wgs;
-	struct psref psref;
-	bool received, timeout;
 
 	WG_TRACE("enter");
 
@@ -2052,27 +2048,14 @@ wg_session_dtor_timer(void *arg)
 	}
 	mutex_exit(wgp->wgp_lock);
 
-	wgs = wg_get_stable_session(wgp, &psref);
-	received = wgs->wgs_recv_counter != 0;
-	wg_put_session(wgs, &psref);
-	wgs = wg_get_unstable_session(wgp, &psref);
-	timeout = (time_uptime - wgs->wgs_time_established) > wg_reject_after_time;
-	wg_put_session(wgs, &psref);
-
-	/*
-	 * Destroy if the peer uses a new session or the old session has surely
-	 * expired.
-	 */
-	if (received || timeout)
-		wg_schedule_peer_task(wgp, WGP_TASK_DESTROY_PREV_SESSION);
-	else
-		callout_schedule(&wgp->wgp_session_dtor_timer, 5 * hz);
+	wg_schedule_peer_task(wgp, WGP_TASK_DESTROY_PREV_SESSION);
 }
 
 static void
 wg_schedule_session_dtor_timer(struct wg_peer *wgp)
 {
 
+	/* 1 second grace period */
 	callout_schedule(&wgp->wgp_session_dtor_timer, hz);
 }
 
@@ -2218,7 +2201,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 
 		if (wgs_prev->wgs_state == WGS_STATE_ESTABLISHED) {
 			wgs_prev->wgs_state = WGS_STATE_DESTROYING;
-			/* We can't wait here (in softint) */
+			/* We can't destroy the old session immediately */
 			wg_schedule_session_dtor_timer(wgp);
 		} else {
 			wg_clear_states(wgs_prev);
