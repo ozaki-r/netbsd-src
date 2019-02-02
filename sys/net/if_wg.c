@@ -160,10 +160,25 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #define WGLOG(level, fmt, args...)	log(level, "%s: " fmt, __func__, ##args)
 
-//#define WG_DEBUG
-//#define WG_DEBUG_DUMP
-//#define WG_DEBUG_LOG
-//#define WG_DEBUG_TRACE
+/* Debug options */
+#ifdef WG_DEBUG
+/* Output debug logs */
+#ifndef WG_DEBUG_LOG
+#define WG_DEBUG_LOG
+#endif
+/* Output trace logs */
+#ifndef WG_DEBUG_TRACE
+#define WG_DEBUG_TRACE
+#endif
+/* Output hash values, etc. */
+#ifndef WG_DEBUG_DUMP
+#define WG_DEBUG_DUMP
+#endif
+/* Make some internal parameters configurable for testing and debugging */
+#ifndef WG_DEBUG_PARAMS
+#define WG_DEBUG_PARAMS
+#endif
+#endif
 
 #ifdef WG_DEBUG_TRACE
 #define WG_TRACE(msg)	log(LOG_DEBUG, "%s:%d: %s\n", __func__, __LINE__, (msg))
@@ -184,7 +199,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 	}								\
 } while (0)
 
-#ifdef WG_DEBUG
+#ifdef WG_DEBUG_PARAMS
 static bool wg_force_underload = false;
 #endif
 
@@ -1834,7 +1849,7 @@ wg_send_cookie_message(struct wg_softc *wg, struct wg_peer *wgp,
 static bool
 wg_is_underload(struct wg_softc *wg, struct wg_peer *wgp, int msgtype)
 {
-#ifdef WG_DEBUG
+#ifdef WG_DEBUG_PARAMS
 	if (wg_force_underload)
 		return true;
 #endif
@@ -3971,7 +3986,7 @@ static struct sysctllog *wg_sysctllog;
 static void
 wg_setup_sysctl(void)
 {
-#ifdef WG_DEBUG
+#ifdef WG_DEBUG_PARAMS
 	const struct sysctlnode *node = NULL;
 
 	sysctl_createv(&wg_sysctllog, 0, NULL, &node,
