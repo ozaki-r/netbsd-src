@@ -226,11 +226,10 @@ show_peer(prop_dictionary_t peer, const char *prefix, bool show_psk)
 	printf("%spublic-key: %s\n", prefix, format_key(prop_obj));
 
 	prop_obj = prop_dictionary_get(peer, "endpoint");
-	if (prop_obj == NULL) {
-		warnx("peer without endpoint");
-		return;
-	}
-	printf("%sendpoint: %s\n", prefix, format_endpoint(prop_obj));
+	if (prop_obj == NULL)
+		printf("%sendpoint: (none)\n", prefix);
+	else
+		printf("%sendpoint: %s\n", prefix, format_endpoint(prop_obj));
 
 	if (show_psk) {
 		prop_obj = prop_dictionary_get(peer, "preshared_key");
