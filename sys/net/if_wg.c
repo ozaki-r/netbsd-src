@@ -406,6 +406,7 @@ struct wg_peer {
 #define wgp_sin6	wgp_endpoint->_sin6
 	struct wg_sockaddr	*wgp_endpoint0;
 	bool			wgp_endpoint_changing;
+	bool			wgp_endpoint_available;
 
 			/* The preshared key (optional) */
 	uint8_t		wgp_psk[WG_PRESHARED_KEY_LEN];
@@ -522,6 +523,9 @@ static struct wg_peer *
 static struct wg_session *
 		wg_determine_session_by_index(struct wg_softc *,
 		    const uint32_t, struct psref *);
+
+static void	wg_update_endpoint_if_necessary(struct wg_peer *,
+		    const struct sockaddr *);
 
 static void	wg_schedule_rekey_timer(struct wg_peer *);
 static void	wg_schedule_session_dtor_timer(struct wg_peer *);
@@ -1279,6 +1283,8 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 	memcpy(wgs->wgs_ephemeral_key_peer, wgmi->wgmi_ephemeral,
 	    sizeof(wgmi->wgmi_ephemeral));
 
+	wg_update_endpoint_if_necessary(wgp, src);
+
 	(void)wg_send_handshake_response_message(wg, wgp, wgmi);
 
 	wg_calculate_keys(wgs, false);
@@ -1683,6 +1689,8 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 
 	wg_schedule_rekey_timer(wgp);
 
+	wg_update_endpoint_if_necessary(wgp, src);
+
 	/*
 	 * Send something immediately (same as the official implementation)
 	 * XXX if there are pending data packets, we don't need to send
@@ -1947,6 +1955,7 @@ wg_schedule_peer_task(struct wg_peer *wgp, int task)
 {
 
 	atomic_or_uint(&wgp->wgp_tasks, task);
+	WG_DLOG("tasks=%d, task=%d\n", wgp->wgp_tasks, task);
 	wg_wakeup_worker(wgp->wgp_sc->wg_worker, WG_WAKEUP_REASON_PEER);
 }
 
@@ -1956,9 +1965,13 @@ wg_change_endpoint(struct wg_peer *wgp, const struct sockaddr *new)
 
 	KASSERT(mutex_owned(wgp->wgp_lock));
 
+	WG_TRACE("Changing endpoint");
+
 	memcpy(wgp->wgp_endpoint0, new, new->sa_len);
 	wgp->wgp_endpoint0 = atomic_swap_ptr(&wgp->wgp_endpoint,
 	    wgp->wgp_endpoint0);
+	if (!wgp->wgp_endpoint_available)
+		wgp->wgp_endpoint_available = true;
 	wgp->wgp_endpoint_changing = true;
 	wg_schedule_peer_task(wgp, WGP_TASK_ENDPOINT_CHANGED);
 }
@@ -2067,6 +2080,32 @@ wg_stop_session_dtor_timer(struct wg_peer *wgp)
 }
 
 static void
+wg_update_endpoint_if_necessary(struct wg_peer *wgp,
+    const struct sockaddr *src)
+{
+
+#ifdef WG_DEBUG_LOG
+	char oldaddr[128], newaddr[128];
+	sockaddr_format(&wgp->wgp_sa, oldaddr, sizeof(oldaddr));
+	sockaddr_format(src, newaddr, sizeof(newaddr));
+	WG_DLOG("old=%s, new=%s\n", oldaddr, newaddr);
+#endif
+
+	/*
+	 * III: "Since the packet has authenticated correctly, the source IP of
+	 * the outer UDP/IP packet is used to update the endpoint for peer..."
+	 */
+	if (__predict_false(sockaddr_cmp(src, &wgp->wgp_sa) != 0)) {
+		mutex_enter(wgp->wgp_lock);
+		/* XXX We can't change the endpoint twice in a short period */
+		if (!wgp->wgp_endpoint_changing) {
+			wg_change_endpoint(wgp, src);
+		}
+		mutex_exit(wgp->wgp_lock);
+	}
+}
+
+static void
 wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
     const struct sockaddr *src)
 {
@@ -2153,17 +2192,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 		goto out;
 	}
 
-	/*
-	 * III: "Since the packet has authenticated correctly, the source IP of
-	 * the outer UDP/IP packet is used to update the endpoint for peer..."
-	 */
-	if (__predict_false(sockaddr_cmp(src, &wgp->wgp_sa) != 0)) {
-		mutex_enter(wgp->wgp_lock);
-		if (!wgp->wgp_endpoint_changing) {
-			wg_change_endpoint(wgp, src);
-		}
-		mutex_exit(wgp->wgp_lock);
-	}
+	wg_update_endpoint_if_necessary(wgp, src);
 
 	ok = wg_validate_route(wg, wgp, af, decrypted_buf);
 	if (ok) {
@@ -2370,6 +2399,7 @@ wg_process_peer_tasks(struct wg_softc *wg)
 		wg_get_peer(wgp, &psref);
 		pserialize_read_exit(s);
 
+	restart:
 		tasks = atomic_swap_uint(&wgp->wgp_tasks, 0);
 		KASSERT(tasks != 0);
 
@@ -2380,6 +2410,11 @@ wg_process_peer_tasks(struct wg_softc *wg)
 			struct wg_session *wgs;
 
 			WG_TRACE("WGP_TASK_SEND_INIT_MESSAGE");
+			if (!wgp->wgp_endpoint_available) {
+				WGLOG(LOG_DEBUG, "No endpoint available\n");
+				/* XXX should do something? */
+				goto skip_init_message;
+			}
 			wgs = wg_get_stable_session(wgp, &_psref);
 			if (wgs->wgs_state == WGS_STATE_UNKNOWN) {
 				wg_put_session(wgs, &_psref);
@@ -2393,6 +2428,7 @@ wg_process_peer_tasks(struct wg_softc *wg)
 				wg_put_session(wgs, &_psref);
 			}
 		}
+	skip_init_message:
 		if (ISSET(tasks, WGP_TASK_ENDPOINT_CHANGED)) {
 			WG_TRACE("WGP_TASK_ENDPOINT_CHANGED");
 			mutex_enter(wgp->wgp_lock);
@@ -2432,6 +2468,12 @@ wg_process_peer_tasks(struct wg_softc *wg)
 			mutex_exit(wgs->wgs_lock);
 			mutex_exit(wgp->wgp_lock);
 		}
+
+		/* New tasks may be scheduled during processing tasks */
+		WG_DLOG("wgp_tasks=%d\n", wgp->wgp_tasks);
+		if (wgp->wgp_tasks != 0)
+			goto restart;
+
 		s = pserialize_read_enter();
 		wg_put_peer(wgp, &psref);
 	}
@@ -2452,7 +2494,9 @@ wg_worker(void *arg)
 		int reasons;
 
 		mutex_enter(&wgw->wgw_lock);
-		cv_wait(&wgw->wgw_cv, &wgw->wgw_lock);
+		/* New tasks may come during task handling */
+		if (wgw->wgw_wakeup_reasons == 0)
+			cv_wait(&wgw->wgw_cv, &wgw->wgw_lock);
 		reasons = wgw->wgw_wakeup_reasons;
 		wgw->wgw_wakeup_reasons = 0;
 		mutex_exit(&wgw->wgw_lock);
@@ -2777,6 +2821,7 @@ wg_alloc_peer(struct wg_softc *wg)
 	    wg_session_dtor_timer, wgp);
 	PSLIST_ENTRY_INIT(wgp, wgp_peerlist_entry);
 	wgp->wgp_endpoint_changing = false;
+	wgp->wgp_endpoint_available = false;
 	wgp->wgp_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NONE);
 	psref_target_init(&wgp->wgp_psref, wg_psref_class);
 
@@ -3371,10 +3416,9 @@ wg_handle_prop_peer(struct wg_softc *wg, prop_dictionary_t peer,
 	size_t addr_len;
 
 	prop_obj = prop_dictionary_get(peer, "endpoint");
-	if (prop_obj == NULL) {
-		error = EINVAL;
-		goto out;
-	}
+	if (prop_obj == NULL)
+		goto skip_endpoint;
+
 	addr = prop_data_data(prop_obj);
 	addr_len = prop_data_size(prop_obj);
 	memcpy(&sockaddr, addr, addr_len);
@@ -3406,7 +3450,11 @@ wg_handle_prop_peer(struct wg_softc *wg, prop_dictionary_t peer,
 	default:
 		break;
 	}
-	prop_array_t allowedips = prop_dictionary_get(peer, "allowedips");
+	wgp->wgp_endpoint_available = true;
+
+	prop_array_t allowedips;
+skip_endpoint:
+	allowedips = prop_dictionary_get(peer, "allowedips");
 	if (allowedips == NULL)
 		goto skip;
 
