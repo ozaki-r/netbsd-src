@@ -337,17 +337,25 @@ wg_mobility_body()
 	setup_wg_common wg0 inet $ip_wg_peer 24 $port "$key_priv_peer"
 
 	export RUMP_SERVER=$SOCK_LOCAL
-	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
+	# Initially, the local doesn't know the endpoint of the peer
+	add_peer wg0 peer0 $key_pub_peer "" $ip_wg_peer/32
 
 	export RUMP_SERVER=$SOCK_PEER
 	add_peer wg0 peer0 $key_pub_local $ip_local:$port $ip_wg_local/32
 
+	extract_new_packets $BUS > $outfile
+	$DEBUG && cat $outfile
+
+	# Ping from the local to the peer doesn't work because the local
+	# doesn't know the endpoint of the peer
 	export RUMP_SERVER=$SOCK_LOCAL
+	$ping_fail $ip_wg_peer
 
 	extract_new_packets $BUS > $outfile
 	$DEBUG && cat $outfile
 
-	$ping $ip_wg_peer
+	export RUMP_SERVER=$SOCK_PEER
+	$ping $ip_wg_local
 
 	extract_new_packets $BUS > $outfile
 	$DEBUG && cat $outfile
@@ -355,12 +363,11 @@ wg_mobility_body()
 	atf_check -s exit:0 -o match:"$ip_local.$port > $ip_peer.$port" cat $outfile
 
 	# Change the IP address of the peer
-	export RUMP_SERVER=$SOCK_PEER
 	setup_common shmif0 inet $ip_peer_new 24
 	atf_check -s exit:0 rump.ifconfig -w 10
 
-	# Ping from the local to the peer doesn't work because the local doesn't know
-	# the change of the IP address of the peer
+	# Ping from the local to the peer doesn't work because the local
+	# doesn't know the change of the IP address of the peer
 	export RUMP_SERVER=$SOCK_LOCAL
 	$ping_fail $ip_wg_peer
 
@@ -369,8 +376,8 @@ wg_mobility_body()
 
 	atf_check -s exit:0 -o match:"$ip_local.$port > $ip_peer.$port" cat $outfile
 
-	# Ping from the peer to the local works because the local notices the change
-	# and updates the IP address of the peer
+	# Ping from the peer to the local works because the local notices
+	# the change and updates the IP address of the peer
 	export RUMP_SERVER=$SOCK_PEER
 	$ping $ip_wg_local
 

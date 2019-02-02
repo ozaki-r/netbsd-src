@@ -150,12 +150,17 @@ add_peer()
 	local pskfile=$6
 	local key_psk="$7"
 	local pskopt=
+	local endpoint_opts=
 
 	if [ -n "$pskfile" ]; then
 		pskopt="--preshared-key=$pskfile"
 	fi
 
-	$wgconfig $ifname add peer $peername $key --endpoint=$endpoint \
+	if [ -n "$endpoint" ]; then
+		endpoint_opts="--endpoint=$endpoint"
+	fi
+
+	$wgconfig $ifname add peer $peername $key $endpoint_opts \
 	    --allowed-ips=$allowedips $pskopt
 	atf_check -s exit:0 -o match:"allowed-ips: $allowedips" \
 	    $HIJACKING wgconfig $ifname show peer $peername
