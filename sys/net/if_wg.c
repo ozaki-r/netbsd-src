@@ -2406,8 +2406,6 @@ wg_process_peer_tasks(struct wg_softc *wg)
 		struct psref psref;
 		unsigned int tasks;
 
-		if (wgp->wgp_state == WGP_STATE_GIVEUP)
-			continue;
 		if (wgp->wgp_tasks == 0)
 			continue;
 
@@ -2775,6 +2773,16 @@ wg_rekey_timer(void *arg)
 }
 
 static void
+wg_purge_pending_packets(struct wg_peer *wgp)
+{
+	struct mbuf *m;
+
+	while ((m = pcq_get(wgp->wgp_q)) != NULL) {
+		m_freem(m);
+	}
+}
+
+static void
 wg_handshake_timeout_timer(void *arg)
 {
 	struct wg_peer *wgp = arg;
@@ -2804,6 +2812,12 @@ wg_handshake_timeout_timer(void *arg)
 		wgp->wgp_handshake_start_time = 0;
 		wg_put_session(wgs, &psref);
 		WG_TRACE("give up");
+		/*
+		 * If a new data packet comes, handshaking will be retried
+		 * and a new session would be established at that time,
+		 * however we don't want to send pending packets then.
+		 */
+		wg_purge_pending_packets(wgp);
 		return;
 	}
 
@@ -3134,12 +3148,6 @@ wg_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	struct wg_peer *wgp = wg_pick_peer_by_sa(wg, dst, &psref);
 	if (wgp == NULL) {
 		WG_TRACE("peer not found");
-		error = EHOSTUNREACH;
-		goto error;
-	}
-
-	if (wgp->wgp_state == WGP_STATE_GIVEUP) {
-		WG_TRACE("give up sending due to WGP_STATE_GIVEUP");
 		error = EHOSTUNREACH;
 		goto error;
 	}
