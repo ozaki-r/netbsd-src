@@ -2152,7 +2152,6 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	success = m_ensure_contig(&m, sizeof(*wgmd) + encrypted_len);
 	if (success) {
 		encrypted_buf = mtod(m, char *) + sizeof(*wgmd);
-		wgmd = mtod(m, struct wg_msg_data *);
 	} else {
 		encrypted_buf = kmem_intr_alloc(encrypted_len, KM_NOSLEEP);
 		if (encrypted_buf == NULL) {
@@ -2163,6 +2162,8 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 		    encrypted_buf);
 		free_encrypted_buf = true;
 	}
+	/* m_ensure_contig may change m regardless of its result */
+	wgmd = mtod(m, struct wg_msg_data *);
 
 	decrypted_len = encrypted_len; /* To avoid zero length */
 	n = wg_get_mbuf(0, decrypted_len);
