@@ -2094,6 +2094,22 @@ wg_stop_session_dtor_timer(struct wg_peer *wgp)
 	callout_halt(&wgp->wgp_session_dtor_timer, NULL);
 }
 
+static bool
+sockaddr_port_match(const struct sockaddr *sa1, const struct sockaddr *sa2)
+{
+	if (sa1->sa_family != sa2->sa_family)
+		return false;
+
+	switch (sa1->sa_family) {
+	case AF_INET:
+		return satocsin(sa1)->sin_port == satocsin(sa2)->sin_port;
+	case AF_INET6:
+		return satocsin6(sa1)->sin6_port == satocsin6(sa2)->sin6_port;
+	default:
+		return true;
+	}
+}
+
 static void
 wg_update_endpoint_if_necessary(struct wg_peer *wgp,
     const struct sockaddr *src)
@@ -2110,7 +2126,8 @@ wg_update_endpoint_if_necessary(struct wg_peer *wgp,
 	 * III: "Since the packet has authenticated correctly, the source IP of
 	 * the outer UDP/IP packet is used to update the endpoint for peer..."
 	 */
-	if (__predict_false(sockaddr_cmp(src, &wgp->wgp_sa) != 0)) {
+	if (__predict_false(sockaddr_cmp(src, &wgp->wgp_sa) != 0 ||
+	                    !sockaddr_port_match(src, &wgp->wgp_sa))) {
 		mutex_enter(wgp->wgp_lock);
 		/* XXX We can't change the endpoint twice in a short period */
 		if (!wgp->wgp_endpoint_changing) {
