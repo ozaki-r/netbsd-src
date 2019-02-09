@@ -439,7 +439,7 @@ strtouint16(const char *str)
 		errx(EXIT_FAILURE, "strtol: trailing garbage");
 	if (errno != 0)
 		err(EXIT_FAILURE, "strtol");
-	if (val <= 0 || val > USHRT_MAX)
+	if (val < 0 || val > USHRT_MAX)
 		errx(EXIT_FAILURE, "out of range");
 
 	return (uint16_t)val;
@@ -454,6 +454,8 @@ cmd_set_listen_port(const char *interface, int argc, char *argv[])
 		usage();
 
 	port = strtouint16(argv[0]);
+	if (port == 0)
+		errx(EXIT_FAILURE, "port 0 is not allowed");
 
 	prop_dictionary_t prop_dict;
 	prop_dict = prop_dictionary_create();
