@@ -536,7 +536,7 @@ static struct wg_peer *
 		    const uint8_t [], struct psref *);
 
 static struct wg_session *
-		wg_determine_session_by_index(struct wg_softc *,
+		wg_lookup_session_by_index(struct wg_softc *,
 		    const uint32_t, struct psref *);
 
 static void	wg_update_endpoint_if_necessary(struct wg_peer *,
@@ -1564,7 +1564,7 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 	struct wg_session *wgs_prev;
 
 	WG_TRACE("resp msg received");
-	wgs = wg_determine_session_by_index(wg, wgmr->wgmr_receiver, &psref);
+	wgs = wg_lookup_session_by_index(wg, wgmr->wgmr_receiver, &psref);
 	if (wgs == NULL) {
 		WG_TRACE("No session found");
 		return;
@@ -1898,7 +1898,7 @@ wg_clear_states(struct wg_session *wgs)
 }
 
 static struct wg_session *
-wg_determine_session_by_index(struct wg_softc *wg, const uint32_t index,
+wg_lookup_session_by_index(struct wg_softc *wg, const uint32_t index,
     struct psref *psref)
 {
 	struct wg_peer *wgp;
@@ -2155,7 +2155,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	KASSERT(wgmd->wgmd_type == WG_MSG_TYPE_DATA);
 	WG_TRACE("data");
 
-	wgs = wg_determine_session_by_index(wg, wgmd->wgmd_receiver, &psref);
+	wgs = wg_lookup_session_by_index(wg, wgmd->wgmd_receiver, &psref);
 	if (wgs == NULL) {
 		WG_TRACE("No session found");
 		m_freem(m);
@@ -2317,7 +2317,7 @@ wg_handle_msg_cookie(struct wg_softc *wg, const struct wg_msg_cookie *wgmc)
 	uint8_t cookie[WG_COOKIE_LEN];
 
 	WG_TRACE("cookie msg received");
-	wgs = wg_determine_session_by_index(wg, wgmc->wgmc_receiver, &psref);
+	wgs = wg_lookup_session_by_index(wg, wgmc->wgmc_receiver, &psref);
 	if (wgs == NULL) {
 		WG_TRACE("No session found");
 		return;
