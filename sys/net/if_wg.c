@@ -2287,7 +2287,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 		 */
 		WG_DLOG("time_uptime=%lu wgs_time_last_data_sent=%lu\n",
 		    time_uptime, wgs->wgs_time_last_data_sent);
-		if ((time_uptime - wgs->wgs_time_last_data_sent) >
+		if ((time_uptime - wgs->wgs_time_last_data_sent) >=
 		    wg_keepalive_timeout) {
 			WG_TRACE("Schedule sending keepalive message");
 			/*
