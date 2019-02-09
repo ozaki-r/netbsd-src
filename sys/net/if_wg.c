@@ -3157,6 +3157,14 @@ wg_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	int bound;
 	struct psref psref;
 
+	/* TODO make the nest limit configurable via sysctl */
+	error = if_tunnel_check_nesting(ifp, m, 1);
+	if (error != 0) {
+		m_freem(m);
+		WGLOG(LOG_ERR, "tunneling loop detected and packet dropped\n");
+		return error;
+	}
+
 	bound = curlwp_bind();
 
 	IFQ_CLASSIFY(&ifp->if_snd, m, dst->sa_family);
