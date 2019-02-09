@@ -11,7 +11,10 @@ IOCONF=	WG.ioconf
 SRCS=	if_wg.c
 
 # For sysctl knobs
-CPPFLAGS.if_wg.c+=	-DWG_DEBUG
+CPPFLAGS.if_wg.c+=	-DWG_DEBUG_PARAMS
+.ifdef RUMP_DEBUG
+CPPFLAGS.if_wg.c+=	-DWG_DEBUG_TRACE -DWG_DEBUG_LOG
+.endif
 
 SRCS+=	wg_component.c
 
