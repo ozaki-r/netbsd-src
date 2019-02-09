@@ -553,7 +553,7 @@ wg_psk_body()
 	    $pskfile "$key_psk"
 
 	# Need a rekey
-	atf_check -s exit:0 sleep $rekey_after_time
+	atf_check -s exit:0 sleep $((rekey_after_time + 1))
 
 	export RUMP_SERVER=$SOCK_LOCAL
 
@@ -571,7 +571,7 @@ wg_psk_body()
 	add_peer wg0 peer0 $key_pub_local $ip_local:$port $ip_wg_local/32
 
 	# Need a rekey
-	atf_check -s exit:0 sleep $rekey_after_time
+	atf_check -s exit:0 sleep $((rekey_after_time + 1))
 
 	export RUMP_SERVER=$SOCK_LOCAL
 	$ping_fail $ip_wg_peer
