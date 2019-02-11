@@ -467,19 +467,19 @@ wg_multiple_peers_cleanup()
 atf_init_test_cases()
 {
 
-	add_basic_test ipv4 ipv4
-	add_basic_test ipv4 ipv6
-	add_basic_test ipv6 ipv4
-	add_basic_test ipv6 ipv6
+	#add_basic_test ipv4 ipv4
+	#add_basic_test ipv4 ipv6
+	#add_basic_test ipv6 ipv4
+	#add_basic_test ipv6 ipv6
 
-	add_payload_sizes_test ipv4 ipv4
-	add_payload_sizes_test ipv4 ipv6
-	add_payload_sizes_test ipv6 ipv4
-	add_payload_sizes_test ipv6 ipv6
+	#add_payload_sizes_test ipv4 ipv4
+	#add_payload_sizes_test ipv4 ipv6
+	#add_payload_sizes_test ipv6 ipv4
+	#add_payload_sizes_test ipv6 ipv6
 
-	atf_add_test_case wg_create_destroy
+	#atf_add_test_case wg_create_destroy
 	atf_add_test_case wg_create_destroy_peers_ipv4
-	atf_add_test_case wg_create_destroy_peers_ipv6
-	atf_add_test_case wg_multiple_interfaces
-	atf_add_test_case wg_multiple_peers
+	#atf_add_test_case wg_create_destroy_peers_ipv6
+	#atf_add_test_case wg_multiple_interfaces
+	#atf_add_test_case wg_multiple_peers
 }

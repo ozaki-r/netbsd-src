@@ -10,6 +10,8 @@ COMMENT= WireGuard
 IOCONF=	WG.ioconf
 SRCS=	if_wg.c
 
+CPPFLAGS.if_wg.c+=	-DWG_RUMPKERNEL
+
 # For sysctl knobs
 CPPFLAGS.if_wg.c+=	-DWG_DEBUG_PARAMS
 .ifdef RUMP_DEBUG

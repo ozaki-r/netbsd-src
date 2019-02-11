@@ -495,6 +495,9 @@ struct wg_softc {
 	struct radix_node_head	*wg_rtable_ipv6;
 
 	struct wg_ppsratecheck	wg_ppsratecheck;
+
+	char			wg_tun_name[IFNAMSIZ];
+	int			wg_tun_fd;
 };
 
 
@@ -3970,6 +3973,58 @@ error:
 	return error;
 }
 
+#ifdef WG_RUMPKERNEL
+#include <rump-sys/kern.h>
+#include <rump-sys/net.h>
+
+#include <rump/rump.h>
+#include <rump/rumpuser.h>
+
+static int
+wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
+{
+	struct ifnet *ifp = &wg->wg_if;
+	int error;
+
+	if (ifp->if_flags & IFF_UP)
+		return EBUSY;
+
+	if (ifd->ifd_cmd == IFLINKSTR_UNSET) {
+		/* FIXME not implemented */
+		return 0;
+	} else if (ifd->ifd_cmd != 0) {
+		return EINVAL;
+	} else if (wg->wg_tun_fd != 0) {
+		return EBUSY;
+	}
+
+	/* Assume \0 included */
+	if (ifd->ifd_len > IFNAMSIZ) {
+		return E2BIG;
+	} else if (ifd->ifd_len < 1) {
+		return EINVAL;
+	}
+
+	error = copyinstr(ifd->ifd_data, wg->wg_tun_name, ifd->ifd_len, NULL);
+	if (error != 0)
+		return error;
+
+	if (strncmp(wg->wg_tun_name, "tun", 3) != 0)
+		return EINVAL;
+
+	char tun_path[MAXPATHLEN];
+	int n = snprintf(tun_path, sizeof(tun_path), "/dev/%s", wg->wg_tun_name);
+	if (n == MAXPATHLEN)
+		return E2BIG;
+
+	error = rumpuser_open(tun_path, RUMPUSER_OPEN_RDWR, &wg->wg_tun_fd);
+	if (error != 0)
+		return error;
+
+	return 0;
+}
+#endif
+
 static int
 wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 {
@@ -4022,6 +4077,12 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 	case SIOCGDRVSPEC:
 		error = wg_ioctl_get(wg, ifd);
 		break;
+
+#ifdef WG_RUMPKERNEL
+	case SIOCSLINKSTR:
+		error = wg_ioctl_linkstr(wg, ifd);
+		break;
+#endif
 
 	default:
 		error = ifioctl_common(ifp, cmd, data);
