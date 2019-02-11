@@ -2195,8 +2195,6 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 	    encrypted_len - WG_AUTHTAG_LEN /* can be 0 */,
 	    wgs->wgs_tkey_recv, wgmd->wgmd_counter, encrypted_buf,
 	    encrypted_len, NULL, 0);
-	m_freem(m);
-	m = NULL;
 	if (error != 0) {
 		WG_LOG_RATECHECK(&wgp->wgp_ppsratecheck, LOG_DEBUG,
 		    "failed to wg_algo_aead_dec\n");
@@ -2216,6 +2214,10 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 		goto out;
 	}
 	wgs->wgs_recv_counter = wgmd->wgmd_counter;
+
+	m_freem(m);
+	m = NULL;
+	wgmd = NULL;
 
 	af = wg_determine_af(decrypted_buf);
 	ok = wg_validate_inner_length(af, decrypted_buf, decrypted_len);
