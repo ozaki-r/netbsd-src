@@ -475,6 +475,7 @@ struct wg_peer {
 #define WGP_TASK_DESTROY_PREV_SESSION		__BIT(3)
 };
 
+struct wg_user;
 struct wg_softc {
 	struct ifnet	wg_if;
 	LIST_ENTRY(wg_softc) wg_list;
@@ -496,8 +497,7 @@ struct wg_softc {
 
 	struct wg_ppsratecheck	wg_ppsratecheck;
 
-	char			wg_tun_name[IFNAMSIZ];
-	int			wg_tun_fd;
+	struct wg_user		*wg_user;
 };
 
 
@@ -2233,7 +2233,9 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 
 	ok = wg_validate_route(wg, wgp, af, decrypted_buf);
 	if (ok) {
-		wg_input(&wg->wg_if, n, af);
+		if (wg_user_mode(wg))
+		else
+			wg_input(&wg->wg_if, n, af);
 	} else {
 		WG_LOG_RATECHECK(&wgp->wgp_ppsratecheck, LOG_DEBUG,
 		    "invalid source address\n");
@@ -4005,23 +4007,17 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 		return EINVAL;
 	}
 
-	error = copyinstr(ifd->ifd_data, wg->wg_tun_name, ifd->ifd_len, NULL);
+	char tun_name[IFNAMSIZ];
+	error = copyinstr(ifd->ifd_data, tun_name, ifd->ifd_len, NULL);
 	if (error != 0)
 		return error;
 
-	if (strncmp(wg->wg_tun_name, "tun", 3) != 0)
+	if (strncmp(tun_name, "tun", 3) != 0)
 		return EINVAL;
 
-	char tun_path[MAXPATHLEN];
-	int n = snprintf(tun_path, sizeof(tun_path), "/dev/%s", wg->wg_tun_name);
-	if (n == MAXPATHLEN)
-		return E2BIG;
+	error = wg_user_create(tun_name, &wg->wg_user);
 
-	error = rumpuser_open(tun_path, RUMPUSER_OPEN_RDWR, &wg->wg_tun_fd);
-	if (error != 0)
-		return error;
-
-	return 0;
+	return error;
 }
 #endif
 
