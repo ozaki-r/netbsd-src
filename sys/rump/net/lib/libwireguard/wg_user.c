@@ -36,6 +36,10 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/ioctl.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
+#include <sys/param.h>
+
+#include <net/if.h>
+#include <net/if_tun.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -50,9 +54,10 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #include <rump/rumpuser_component.h>
 
-struct wg_sc;
+#include "wg_user.h"
+
 struct wg_user {
-	struct wg_sc *wgu_sc;
+	struct wg_softc *wgu_sc;
 	int wgu_devnum;
 	char wgu_tun_name[IFNAMSIZ];
 
@@ -70,7 +75,7 @@ static int
 open_tun(const char *tun_name)
 {
 	char tun_path[MAXPATHLEN];
-	int n;
+	int n, fd, error;
 
 	n = snprintf(tun_path, sizeof(tun_path), "/dev/%s", tun_name);
 	if (n == MAXPATHLEN)
@@ -78,7 +83,7 @@ open_tun(const char *tun_name)
 
 	fd = open(tun_path, O_RDWR);
 	if (fd == -1) {
-		fprintf(stderr, "%s: can't open %s: %s\n"
+		fprintf(stderr, "%s: can't open %s: %s\n",
 		    __func__, tun_name, strerror(errno));
 	}
 
@@ -129,7 +134,7 @@ wg_user_rcvthread(void *aaargh)
 		if (pfd[1].revents & POLLIN)
 			continue;
 
-		iov[0].iov_base = wgu->wgu_rcvsa;
+		iov[0].iov_base = &wgu->wgu_rcvsa;
 		iov[0].iov_len = sizeof(wgu->wgu_rcvsa);
 		iov[1].iov_base = wgu->wgu_rcvbuf;
 		iov[1].iov_len = sizeof(wgu->wgu_rcvbuf);
@@ -147,7 +152,7 @@ wg_user_rcvthread(void *aaargh)
 		}
 
 		rumpuser_component_schedule(NULL);
-		wg_user_recv(wgu->wgu_sc, &iov, 2);
+		wg_user_recv(wgu->wgu_sc, iov, 2);
 		rumpuser_component_unschedule();
 	}
 
@@ -158,7 +163,7 @@ wg_user_rcvthread(void *aaargh)
 }
 
 int
-wg_user_create(const char *tun_name, struct wg_sc *wg,
+wg_user_create(const char *tun_name, struct wg_softc *wg,
     struct wg_user **wgup)
 {
 	struct wg_user *wgu = NULL;
@@ -227,6 +232,7 @@ wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 	rumpuser_component_schedule(cookie);
 }
 
+int wg_user_dying(struct wg_user *);
 int
 wg_user_dying(struct wg_user *wgu)
 {

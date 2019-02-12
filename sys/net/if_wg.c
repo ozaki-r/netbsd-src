@@ -112,6 +112,10 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #include "ioconf.h"
 
+#ifdef WG_RUMPKERNEL
+#include "wg_user.h"
+#endif
+
 /*
  * Data structures
  * - struct wg_softc is an instance of wg interfaces
@@ -475,7 +479,6 @@ struct wg_peer {
 #define WGP_TASK_DESTROY_PREV_SESSION		__BIT(3)
 };
 
-struct wg_user;
 struct wg_softc {
 	struct ifnet	wg_if;
 	LIST_ENTRY(wg_softc) wg_list;
@@ -497,7 +500,9 @@ struct wg_softc {
 
 	struct wg_ppsratecheck	wg_ppsratecheck;
 
+#ifdef WG_RUMPKERNEL
 	struct wg_user		*wg_user;
+#endif
 };
 
 
@@ -568,6 +573,11 @@ static int	wg_clone_create(struct if_clone *, int);
 static int	wg_clone_destroy(struct ifnet *);
 
 static void	wg_setup_sysctl(void);
+
+#ifdef WG_RUMPKERNEL
+static int	wg_ioctl_linkstr(struct wg_softc *, struct ifdrv *);
+static void	wg_input_user(struct wg_softc *, struct mbuf *, const int);
+#endif
 
 #define WG_PEER_READER_FOREACH(wgp, wg)					\
 	PSLIST_READER_FOREACH((wgp), &(wg)->wg_peers, struct wg_peer,	\
@@ -2139,6 +2149,13 @@ wg_update_endpoint_if_necessary(struct wg_peer *wgp,
 	}
 }
 
+static bool
+wg_user_mode(struct wg_softc *wg)
+{
+
+	return wg->wg_user != NULL;
+}
+
 static void
 wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
     const struct sockaddr *src)
@@ -2233,9 +2250,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 
 	ok = wg_validate_route(wg, wgp, af, decrypted_buf);
 	if (ok) {
-		if (wg_user_mode(wg))
-		else
-			wg_input(&wg->wg_if, n, af);
+		wg_input(&wg->wg_if, n, af);
 	} else {
 		WG_LOG_RATECHECK(&wgp->wgp_ppsratecheck, LOG_DEBUG,
 		    "invalid source address\n");
@@ -3095,6 +3110,11 @@ wg_clone_destroy(struct ifnet *ifp)
 	LIST_REMOVE(wg, wg_list);
 	mutex_exit(&wg_softcs.lock);
 
+#ifdef WG_RUMPKERNEL
+	if (wg_user_mode(wg))
+		wg_user_destroy(wg->wg_user);
+#endif
+
 	bpf_detach(ifp);
 	if_detach(ifp);
 	wg_worker_destroy(wg);
@@ -3371,6 +3391,14 @@ wg_input(struct ifnet *ifp, struct mbuf *m, const int af)
 	size_t pktlen;
 
 	KASSERT(af == AF_INET || af == AF_INET6);
+
+#ifdef WG_RUMPKERNEL
+	struct wg_softc *wg = ifp->if_softc;
+	if (wg_user_mode(wg)) {
+		wg_input_user(wg, m, af);
+		return;
+	}
+#endif
 
 	m_set_rcvif(m, ifp);
 	pktlen = m->m_pkthdr.len;
@@ -3975,52 +4003,6 @@ error:
 	return error;
 }
 
-#ifdef WG_RUMPKERNEL
-#include <rump-sys/kern.h>
-#include <rump-sys/net.h>
-
-#include <rump/rump.h>
-#include <rump/rumpuser.h>
-
-static int
-wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
-{
-	struct ifnet *ifp = &wg->wg_if;
-	int error;
-
-	if (ifp->if_flags & IFF_UP)
-		return EBUSY;
-
-	if (ifd->ifd_cmd == IFLINKSTR_UNSET) {
-		/* FIXME not implemented */
-		return 0;
-	} else if (ifd->ifd_cmd != 0) {
-		return EINVAL;
-	} else if (wg->wg_tun_fd != 0) {
-		return EBUSY;
-	}
-
-	/* Assume \0 included */
-	if (ifd->ifd_len > IFNAMSIZ) {
-		return E2BIG;
-	} else if (ifd->ifd_len < 1) {
-		return EINVAL;
-	}
-
-	char tun_name[IFNAMSIZ];
-	error = copyinstr(ifd->ifd_data, tun_name, ifd->ifd_len, NULL);
-	if (error != 0)
-		return error;
-
-	if (strncmp(tun_name, "tun", 3) != 0)
-		return EINVAL;
-
-	error = wg_user_create(tun_name, &wg->wg_user);
-
-	return error;
-}
-#endif
-
 static int
 wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 {
@@ -4141,6 +4123,88 @@ wg_setup_sysctl(void)
 	(void)wg_sysctllog;
 #endif
 }
+
+#ifdef WG_RUMPKERNEL
+static int
+wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
+{
+	struct ifnet *ifp = &wg->wg_if;
+	int error;
+
+	if (ifp->if_flags & IFF_UP)
+		return EBUSY;
+
+	if (ifd->ifd_cmd == IFLINKSTR_UNSET) {
+		/* FIXME not implemented */
+		return 0;
+	} else if (ifd->ifd_cmd != 0) {
+		return EINVAL;
+	} else if (wg->wg_user != NULL) {
+		return EBUSY;
+	}
+
+	/* Assume \0 included */
+	if (ifd->ifd_len > IFNAMSIZ) {
+		return E2BIG;
+	} else if (ifd->ifd_len < 1) {
+		return EINVAL;
+	}
+
+	char tun_name[IFNAMSIZ];
+	error = copyinstr(ifd->ifd_data, tun_name, ifd->ifd_len, NULL);
+	if (error != 0)
+		return error;
+
+	if (strncmp(tun_name, "tun", 3) != 0)
+		return EINVAL;
+
+	error = wg_user_create(tun_name, wg, &wg->wg_user);
+
+	return error;
+}
+
+static void
+wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
+{
+	extern void wg_user_send(struct wg_user *, struct iovec *, size_t);
+	struct iovec iov[2];
+	struct sockaddr_storage ss;
+
+	if (af == AF_INET) {
+		struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+		struct ip *ip;
+		ip = mtod(m, struct ip *);
+		sockaddr_in_init(sin, &ip->ip_dst, 0);
+	} else if (af == AF_INET6) {
+		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ss;
+		struct ip6_hdr *ip6;
+		ip6 = mtod(m, struct ip6_hdr *);
+		sockaddr_in6_init(sin6, &ip6->ip6_dst, 0, 0, 0);
+	} else
+		return;
+
+	iov[0].iov_base = &ss;
+	iov[0].iov_len = ss.ss_len;
+	iov[1].iov_base = mtod(m, void *);
+	iov[1].iov_len = m->m_len;
+
+	wg_user_send(wg->wg_user, iov, 2);
+}
+
+void
+wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+{
+	struct ifnet *ifp = &wg->wg_if;
+	struct mbuf *m;
+	const struct sockaddr *dst;
+
+	dst = iov[0].iov_base;
+	m = iov[1].iov_base;
+
+	(void)wg_output(ifp, m, dst, NULL);
+}
+
+#endif
 
 /*
  * Module infrastructure

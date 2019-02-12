@@ -20,5 +20,8 @@ CPPFLAGS.if_wg.c+=	-DWG_DEBUG_TRACE -DWG_DEBUG_LOG
 
 SRCS+=	wg_component.c
 
+#SRCS+=	wg_user.c
+RUMPCOMP_USER_SRCS=	wg_user.c
+
 .include <bsd.lib.mk>
 .include <bsd.klinks.mk>
