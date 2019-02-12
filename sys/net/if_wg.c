@@ -165,6 +165,9 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #define WGLOG(level, fmt, args...)	log(level, "%s: " fmt, __func__, ##args)
 
+#define WG_DEBUG_LOG
+#define WG_DEBUG_TRACE
+
 /* Debug options */
 #ifdef WG_DEBUG
 /* Output debug logs */
@@ -3386,6 +3389,7 @@ wg_input(struct ifnet *ifp, struct mbuf *m, const int af)
 
 	KASSERT(af == AF_INET || af == AF_INET6);
 
+	WG_TRACE("");
 #ifdef WG_RUMPKERNEL
 	struct wg_softc *wg = ifp->if_softc;
 	if (wg_user_mode(wg)) {
@@ -4171,6 +4175,8 @@ wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
 	struct iovec iov[2];
 	struct sockaddr_storage ss;
 
+	WG_TRACE("");
+
 	if (af == AF_INET) {
 		struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
 		struct ip *ip;
@@ -4200,7 +4206,12 @@ rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 	const struct sockaddr *dst;
 
 	dst = iov[0].iov_base;
-	m = iov[1].iov_base;
+
+	m = m_gethdr(M_NOWAIT, MT_DATA);
+	if (m == NULL)
+		return;
+	m->m_len = m->m_pkthdr.len = 0;
+	m_copyback(m, 0, iov[1].iov_len, iov[1].iov_base);
 
 	(void)wg_output(ifp, m, dst, NULL);
 }

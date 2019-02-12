@@ -103,6 +103,12 @@ wg_interoperability_basic_body()
 
 	$DEBUG && netstat -nr -f inet
 
+	atf_check -s exit:0 ifconfig tun0 $ip_wg_local/24
+	atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
+
+	$DEBUG && ifconfig tun0
+	$DEBUG && netstat -nr -f inet
+
 	$ping $ip_wg_peer
 
 	export RUMP_SERVER=$SOCK_LOCAL
@@ -192,5 +198,5 @@ atf_init_test_cases()
 {
 
 	atf_add_test_case wg_interoperability_basic
-	atf_add_test_case wg_interoperability_cookie
+	#atf_add_test_case wg_interoperability_cookie
 }
