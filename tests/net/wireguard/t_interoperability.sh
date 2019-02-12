@@ -65,7 +65,7 @@ wg_interoperability_basic_head()
 wg_interoperability_basic_body()
 {
 	local ifconfig="atf_check -s exit:0 rump.ifconfig"
-	local ping="atf_check -s exit:0 -o ignore rump.ping -n -c 3 -w 3"
+	local ping="atf_check -s exit:0 -o ignore ping -n -c 3 -w 3"
 	local ping_fail="atf_check -s not-exit:0 -o ignore rump.ping -n -c 1 -w 3"
 	local key_priv_local=
 	local key_pub_local=
@@ -89,6 +89,8 @@ wg_interoperability_basic_body()
 	atf_check -s exit:0 rump.ifconfig virt0 $ip_local/24
 	atf_check -s exit:0 rump.ifconfig virt0 up
 
+	$DEBUG && netstat -nr -f inet
+
 	$ping $ip_peer
 
 	key_priv_local="aK3TbzUNDO4aeDRX54x8bOG+NaKuqXKt7Hwq0Uz69Wo="
@@ -98,6 +100,8 @@ wg_interoperability_basic_body()
 
 	setup_wg_common wg0 inet $ip_wg_local 24 $port "$key_priv_local"
 	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
+
+	$DEBUG && netstat -nr -f inet
 
 	$ping $ip_wg_peer
 

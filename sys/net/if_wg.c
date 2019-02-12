@@ -575,6 +575,7 @@ static int	wg_clone_destroy(struct ifnet *);
 static void	wg_setup_sysctl(void);
 
 #ifdef WG_RUMPKERNEL
+static bool	wg_user_mode(struct wg_softc *);
 static int	wg_ioctl_linkstr(struct wg_softc *, struct ifdrv *);
 static void	wg_input_user(struct wg_softc *, struct mbuf *, const int);
 #endif
@@ -2149,13 +2150,6 @@ wg_update_endpoint_if_necessary(struct wg_peer *wgp,
 	}
 }
 
-static bool
-wg_user_mode(struct wg_softc *wg)
-{
-
-	return wg->wg_user != NULL;
-}
-
 static void
 wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
     const struct sockaddr *src)
@@ -3111,8 +3105,8 @@ wg_clone_destroy(struct ifnet *ifp)
 	mutex_exit(&wg_softcs.lock);
 
 #ifdef WG_RUMPKERNEL
-	if (wg_user_mode(wg))
-		wg_user_destroy(wg->wg_user);
+	//if (wg_user_mode(wg))
+	//	rumpcomp_wg_user_destroy(wg->wg_user);
 #endif
 
 	bpf_detach(ifp);
@@ -4125,6 +4119,13 @@ wg_setup_sysctl(void)
 }
 
 #ifdef WG_RUMPKERNEL
+static bool
+wg_user_mode(struct wg_softc *wg)
+{
+
+	return wg->wg_user != NULL;
+}
+
 static int
 wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 {
@@ -4158,7 +4159,7 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 	if (strncmp(tun_name, "tun", 3) != 0)
 		return EINVAL;
 
-	error = wg_user_create(tun_name, wg, &wg->wg_user);
+	error = rumpcomp_wg_user_create(tun_name, wg, &wg->wg_user);
 
 	return error;
 }
@@ -4192,7 +4193,7 @@ wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
 }
 
 void
-wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 {
 	struct ifnet *ifp = &wg->wg_if;
 	struct mbuf *m;

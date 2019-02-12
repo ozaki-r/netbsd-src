@@ -30,9 +30,9 @@
 struct wg_user;
 struct wg_softc;
 
-int	wg_user_create(const char *tun_name, struct wg_softc *,
+int	rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *,
 	    struct wg_user **);
-void	wg_user_destroy(struct wg_user *);
+void	rumpcomp_wg_user_destroy(struct wg_user *);
 
-void	wg_user_send(struct wg_user *, struct iovec *, size_t);
-void	wg_user_recv(struct wg_softc *, struct iovec *, size_t);
+void	rumpcomp_wg_user_send(struct wg_user *, struct iovec *, size_t);
+void	rump_wg_user_recv(struct wg_softc *, struct iovec *, size_t);

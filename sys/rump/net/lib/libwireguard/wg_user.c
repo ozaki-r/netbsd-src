@@ -152,7 +152,7 @@ wg_user_rcvthread(void *aaargh)
 		}
 
 		rumpuser_component_schedule(NULL);
-		wg_user_recv(wgu->wgu_sc, iov, 2);
+		rump_wg_user_recv(wgu->wgu_sc, iov, 2);
 		rumpuser_component_unschedule();
 	}
 
@@ -163,7 +163,7 @@ wg_user_rcvthread(void *aaargh)
 }
 
 int
-wg_user_create(const char *tun_name, struct wg_softc *wg,
+rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *wg,
     struct wg_user **wgup)
 {
 	struct wg_user *wgu = NULL;
@@ -212,7 +212,7 @@ wg_user_create(const char *tun_name, struct wg_softc *wg,
 }
 
 void
-wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
+rumpcomp_wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 {
 	void *cookie = rumpuser_component_unschedule();
 	ssize_t idontcare __attribute__((__unused__));
@@ -255,7 +255,7 @@ wg_user_dying(struct wg_user *wgu)
 }
 
 void
-wg_user_destroy(struct wg_user *wgu)
+rumpcomp_wg_user_destroy(struct wg_user *wgu)
 {
 	void *cookie = rumpuser_component_unschedule();
 
