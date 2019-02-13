@@ -68,7 +68,6 @@ struct wg_user {
 	int wgu_dying;
 
 	char wgu_rcvbuf[9018]; /* jumbo frame max len */
-	struct sockaddr_storage wgu_rcvsa;
 };
 
 static int
@@ -109,7 +108,6 @@ wg_user_rcvthread(void *aaargh)
 {
 	struct wg_user *wgu = aaargh;
 	struct pollfd pfd[2];
-	struct iovec iov[2];
 	ssize_t nn = 0;
 	int prv;
 
@@ -121,6 +119,8 @@ wg_user_rcvthread(void *aaargh)
 	pfd[1].events = POLLIN;
 
 	while (!wgu->wgu_dying) {
+		struct iovec iov[2];
+
 		prv = poll(pfd, 2, -1);
 		if (prv == 0)
 			continue;
@@ -134,12 +134,7 @@ wg_user_rcvthread(void *aaargh)
 		if (pfd[1].revents & POLLIN)
 			continue;
 
-		iov[0].iov_base = &wgu->wgu_rcvsa;
-		iov[0].iov_len = sizeof(wgu->wgu_rcvsa);
-		iov[1].iov_base = wgu->wgu_rcvbuf;
-		iov[1].iov_len = sizeof(wgu->wgu_rcvbuf);
-
-		nn = readv(wgu->wgu_fd, iov, 2);
+		nn = read(wgu->wgu_fd, wgu->wgu_rcvbuf, sizeof(wgu->wgu_rcvbuf));
 		if (nn == -1 && errno == EAGAIN)
 			continue;
 
@@ -150,6 +145,12 @@ wg_user_rcvthread(void *aaargh)
 			sleep(1);
 			continue;
 		}
+
+		iov[0].iov_base = wgu->wgu_rcvbuf;
+		iov[0].iov_len = ((struct sockaddr *)wgu->wgu_rcvbuf)->sa_len;
+
+		iov[1].iov_base = (char *)wgu->wgu_rcvbuf + iov[0].iov_len;
+		iov[1].iov_len = nn - iov[0].iov_len;
 
 		rumpuser_component_schedule(NULL);
 		rump_wg_user_recv(wgu->wgu_sc, iov, 2);

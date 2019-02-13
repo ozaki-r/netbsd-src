@@ -213,6 +213,16 @@ static bool wg_force_underload = false;
 
 #ifdef WG_DEBUG_DUMP
 static void
+wg_dump_buf(const char *func, const char *buf, const size_t size)
+{
+
+	log(LOG_DEBUG, "%s: ", func);
+	for (int i = 0; i < size; i++)
+		log(LOG_DEBUG, "%02x ", (int)(0xff & buf[i]));
+	log(LOG_DEBUG, "\n");
+}
+
+static void
 wg_dump_hash(const uint8_t *func, const uint8_t *name, const uint8_t *hash,
     const size_t size)
 {
@@ -227,9 +237,12 @@ wg_dump_hash(const uint8_t *func, const uint8_t *name, const uint8_t *hash,
 	wg_dump_hash(__func__, name, hash, WG_HASH_LEN)
 #define WG_DUMP_HASH48(name, hash) \
 	wg_dump_hash(__func__, name, hash, 48)
+#define WG_DUMP_BUF(buf, size) \
+	wg_dump_buf(__func__, buf, size)
 #else
 #define WG_DUMP_HASH(name, hash)	__nothing
 #define WG_DUMP_HASH48(name, hash)	__nothing
+#define WG_DUMP_BUF(buf, size)	__nothing
 #endif /* WG_DEBUG_DUMP */
 
 #define WG_MTU			1420
@@ -4171,7 +4184,6 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 static void
 wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
 {
-	extern void wg_user_send(struct wg_user *, struct iovec *, size_t);
 	struct iovec iov[2];
 	struct sockaddr_storage ss;
 
@@ -4195,7 +4207,9 @@ wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
 	iov[1].iov_base = mtod(m, void *);
 	iov[1].iov_len = m->m_len;
 
-	wg_user_send(wg->wg_user, iov, 2);
+	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
+
+	rumpcomp_wg_user_send(wg->wg_user, iov, 2);
 }
 
 void
@@ -4205,6 +4219,8 @@ rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 	struct mbuf *m;
 	const struct sockaddr *dst;
 
+	WG_TRACE("");
+
 	dst = iov[0].iov_base;
 
 	m = m_gethdr(M_NOWAIT, MT_DATA);
@@ -4212,6 +4228,9 @@ rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 		return;
 	m->m_len = m->m_pkthdr.len = 0;
 	m_copyback(m, 0, iov[1].iov_len, iov[1].iov_base);
+
+	WG_DLOG("iov_len=%lu\n", iov[1].iov_len);
+	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
 
 	(void)wg_output(ifp, m, dst, NULL);
 }
