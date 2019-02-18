@@ -410,6 +410,7 @@ struct wg_peer {
 	struct wg_softc		*wgp_sc;
 	char			wgp_name[WG_PEER_NAME_MAXLEN + 1];
 	struct pslist_entry	wgp_peerlist_entry;
+	pserialize_t		wgp_psz;
 	struct psref_target	wgp_psref;
 	kmutex_t		*wgp_lock;
 
@@ -606,7 +607,6 @@ static struct {
 	kmutex_t lock;
 } wg_softcs __cacheline_aligned;
 
-pserialize_t wg_psz __read_mostly;
 struct psref_class *wg_psref_class __read_mostly;
 
 static struct if_clone wg_cloner =
@@ -630,7 +630,6 @@ wginit(void)
 
 	wg_setup_sysctl();
 
-	wg_psz = pserialize_create();
 	wg_psref_class = psref_class_create("wg", IPL_SOFTNET);
 
 	mutex_init(&wg_softcs.lock, MUTEX_DEFAULT, IPL_NONE);
@@ -651,7 +650,6 @@ wgdetach(void)
 
 	if (error == 0) {
 		psref_class_destroy(wg_psref_class);
-		pserialize_destroy(wg_psz);
 
 		if_clone_detach(&wg_cloner);
 	}
@@ -2466,7 +2464,7 @@ wg_process_peer_tasks(struct wg_softc *wg)
 			WG_TRACE("WGP_TASK_ENDPOINT_CHANGED");
 			mutex_enter(wgp->wgp_lock);
 			if (wgp->wgp_endpoint_changing) {
-				pserialize_perform(wg_psz);
+				pserialize_perform(wgp->wgp_psz);
 				psref_target_destroy(&wgp->wgp_endpoint0->wgsa_psref,
 				    wg_psref_class);
 				psref_target_init(&wgp->wgp_endpoint0->wgsa_psref,
@@ -2492,7 +2490,7 @@ wg_process_peer_tasks(struct wg_softc *wg)
 			wgs = wgp->wgp_session_unstable;
 			mutex_enter(wgs->wgs_lock);
 			if (wgs->wgs_state == WGS_STATE_DESTROYING) {
-				pserialize_perform(wg_psz);
+				pserialize_perform(wgp->wgp_psz);
 				psref_target_destroy(&wgs->wgs_psref, wg_psref_class);
 				psref_target_init(&wgs->wgs_psref, wg_psref_class);
 				wg_clear_states(wgs);
@@ -2872,6 +2870,7 @@ wg_alloc_peer(struct wg_softc *wg)
 	wgp->wgp_endpoint_changing = false;
 	wgp->wgp_endpoint_available = false;
 	wgp->wgp_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NONE);
+	wgp->wgp_psz = pserialize_create();
 	psref_target_init(&wgp->wgp_psref, wg_psref_class);
 
 	wgp->wgp_endpoint = kmem_zalloc(sizeof(*wgp->wgp_endpoint), KM_SLEEP);
@@ -2939,6 +2938,7 @@ wg_destroy_peer(struct wg_peer *wgp)
 	kmem_free(wgp->wgp_endpoint, sizeof(*wgp->wgp_endpoint));
 	kmem_free(wgp->wgp_endpoint0, sizeof(*wgp->wgp_endpoint0));
 
+	pserialize_destroy(wgp->wgp_psz);
 	pcq_destroy(wgp->wgp_q);
 	mutex_obj_free(wgp->wgp_lock);
 
@@ -2954,8 +2954,10 @@ restart:
 	mutex_enter(wg->wg_lock);
 	WG_PEER_WRITER_FOREACH(wgp, wg) {
 		WG_PEER_WRITER_REMOVE(wgp);
+		mutex_enter(wgp->wgp_lock);
 		wgp->wgp_state = WGP_STATE_DESTROYING;
-		pserialize_perform(wg_psz);
+		pserialize_perform(wgp->wgp_psz);
+		mutex_exit(wgp->wgp_lock);
 		PSLIST_ENTRY_DESTROY(wgp, wgp_peerlist_entry);
 		break;
 	}
@@ -2984,8 +2986,10 @@ wg_destroy_peer_name(struct wg_softc *wg, const char *name)
 	if (wgp != NULL) {
 		WG_PEER_WRITER_REMOVE(wgp);
 		wg->wg_npeers--;
+		mutex_enter(wgp->wgp_lock);
 		wgp->wgp_state = WGP_STATE_DESTROYING;
-		pserialize_perform(wg_psz);
+		pserialize_perform(wgp->wgp_psz);
+		mutex_exit(wgp->wgp_lock);
 		PSLIST_ENTRY_DESTROY(wgp, wgp_peerlist_entry);
 	}
 	mutex_exit(wg->wg_lock);
