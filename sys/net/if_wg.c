@@ -80,6 +80,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/percpu.h>
 #include <sys/callout.h>
 
+#include <net/bpf.h>
 #include <net/if.h>
 #include <net/if_types.h>
 #include <net/route.h>
@@ -3028,6 +3029,8 @@ wg_if_attach(struct wg_softc *wg)
 	if_alloc_sadl(&wg->wg_if);
 	if_register(&wg->wg_if);
 
+	bpf_attach(&wg->wg_if, DLT_NULL, sizeof(uint32_t));
+
 	return 0;
 }
 
@@ -3087,6 +3090,7 @@ wg_clone_destroy(struct ifnet *ifp)
 	LIST_REMOVE(wg, wg_list);
 	mutex_exit(&wg_softcs.lock);
 
+	bpf_detach(ifp);
 	if_detach(ifp);
 	wg_worker_destroy(wg);
 	wg_destroy_all_peers(wg);
@@ -3174,6 +3178,8 @@ wg_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	bound = curlwp_bind();
 
 	IFQ_CLASSIFY(&ifp->if_snd, m, dst->sa_family);
+
+	bpf_mtap_af(ifp, dst->sa_family, m, BPF_D_OUT);
 
 	m->m_flags &= ~(M_BCAST|M_MCAST);
 
@@ -3363,6 +3369,8 @@ wg_input(struct ifnet *ifp, struct mbuf *m, const int af)
 
 	m_set_rcvif(m, ifp);
 	pktlen = m->m_pkthdr.len;
+
+	bpf_mtap_af(ifp, af, m, BPF_D_IN);
 
 	switch (af) {
 	case AF_INET:
