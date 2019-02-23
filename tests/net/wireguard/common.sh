@@ -88,10 +88,6 @@ setup_wg_common()
 		$ifconfig $ifname linkstr $tun
 	fi
 	$ifconfig $ifname $proto $ip/$prefix
-	if [ $proto = inet ]; then
-		# Need to create a local route for $ifname
-		atf_check -s exit:0 -o ignore rump.route add -net $ip/$prefix -link $ifname -iface
-	fi
 	$DEBUG && rump.netstat -nr
 	echo $key_priv > $privfile
 	$wgconfig $ifname set private-key $privfile
