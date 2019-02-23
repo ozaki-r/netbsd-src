@@ -1226,9 +1226,11 @@ in_ifinit(struct ifnet *ifp, struct in_ifaddr *ia,
 		ia->ia_dstaddr = ia->ia_addr;
 		flags |= RTF_HOST;
 	} else if (ifp->if_flags & IFF_POINTOPOINT) {
-		if (ia->ia_dstaddr.sin_family != AF_INET)
-			return (0);
-		flags |= RTF_HOST;
+		if (in_mask2len(&ia->ia_sockmask.sin_addr) == 32) {
+			if (ia->ia_dstaddr.sin_family != AF_INET)
+				return (0);
+			flags |= RTF_HOST;
+		}
 	}
 
 	/* Add the local route to the address */
