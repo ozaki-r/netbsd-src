@@ -65,7 +65,7 @@ wg_interoperability_basic_head()
 wg_interoperability_basic_body()
 {
 	local ifconfig="atf_check -s exit:0 rump.ifconfig"
-	local ping="atf_check -s exit:0 -o ignore ping -n -c 3 -w 3"
+	local ping="atf_check -s exit:0 -o ignore rump.ping -n -c 3 -w 3"
 	local ping_fail="atf_check -s not-exit:0 -o ignore rump.ping -n -c 1 -w 3"
 	local key_priv_local=
 	local key_pub_local=
@@ -89,8 +89,6 @@ wg_interoperability_basic_body()
 	atf_check -s exit:0 rump.ifconfig virt0 $ip_local/24
 	atf_check -s exit:0 rump.ifconfig virt0 up
 
-	$DEBUG && netstat -nr -f inet
-
 	$ping $ip_peer
 
 	key_priv_local="aK3TbzUNDO4aeDRX54x8bOG+NaKuqXKt7Hwq0Uz69Wo="
@@ -100,14 +98,6 @@ wg_interoperability_basic_body()
 
 	setup_wg_common wg0 inet $ip_wg_local 24 $port "$key_priv_local"
 	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
-
-	$DEBUG && netstat -nr -f inet
-
-	atf_check -s exit:0 ifconfig tun0 $ip_wg_local/24
-	atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
-
-	$DEBUG && ifconfig tun0
-	$DEBUG && netstat -nr -f inet
 
 	$ping $ip_wg_peer
 
@@ -194,9 +184,105 @@ wg_interoperability_cookie_cleanup()
 	cleanup
 }
 
+atf_test_case wg_userspace_basic cleanup
+wg_userspace_basic_head()
+{
+
+	atf_set "descr" "tests of userspace implementation of WireGuard"
+	atf_set "require.progs" "rump_server" "wgconfig" "wg-keygen"
+}
+
+#
+# Set ATF_WIREGUARD_USERSPACE=yes to run the test.
+# Also to run the test, the following setups are required on the host and a peer.
+#
+# [Host]
+#   ifconfig bridge0 create
+#   ifconfig tap0 create
+#   brconfig bridge0 add tap0
+#   brconfig bridge0 add <external-interface>
+#   ifconfig tap0 up
+#   ifconfig bridge0 up
+#
+# [Peer]
+#   ip addr add 10.0.0.2/24 dev <external-interface>
+#   ip link add wg0 type wireguard
+#   ip addr add 10.0.1.2/24 dev wg0
+#   privkey="EF9D8AOkmxjlkiRFqBnfJS+RJJHbUy02u+VkGlBr9Eo="
+#   ip link set wg0 up
+#   echo $privkey > /tmp/private-key
+#   wg set wg0 listen-port 52428
+#   wg set wg0 private-key /tmp/private-key
+#   pubkey="2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs="
+#   wg set wg0 peer $pubkey endpoint 10.0.0.3:52428 allowed-ips 10.0.1.1/32
+#
+wg_userspace_basic_body()
+{
+	local ifconfig="atf_check -s exit:0 rump.ifconfig"
+	local ping="atf_check -s exit:0 -o ignore ping -n -c 3 -w 3"
+	local ping_fail="atf_check -s not-exit:0 -o ignore ping -n -c 1 -w 3"
+	local key_priv_local=
+	local key_pub_local=
+	local key_priv_peer=
+	local key_pub_peer=
+	local ip_local=10.0.0.3
+	local ip_peer=10.0.0.2
+	local ip_wg_local=10.0.1.1
+	local ip_wg_peer=10.0.1.2
+	local port=52428
+	local outfile=./out
+
+	if [ "$ATF_WIREGUARD_USERSPACE" != yes ]; then
+		atf_skip "set ATF_WIREGUARD_USERSPACE=yes to run the test"
+	fi
+
+	export RUMP_SERVER=$SOCK_LOCAL
+	rump_server_crypto_start $SOCK_LOCAL virtif wireguard netinet6
+	atf_check -s exit:0 rump.sysctl -q -w net.inet.ip.dad_count=0
+	atf_check -s exit:0 rump.ifconfig virt0 create
+	atf_check -s exit:0 rump.ifconfig virt0 $ip_local/24
+	atf_check -s exit:0 rump.ifconfig virt0 up
+
+	$DEBUG && netstat -nr -f inet
+
+	$ping $ip_peer
+
+	key_priv_local="aK3TbzUNDO4aeDRX54x8bOG+NaKuqXKt7Hwq0Uz69Wo="
+	key_pub_local="2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs="
+	key_priv_peer="EF9D8AOkmxjlkiRFqBnfJS+RJJHbUy02u+VkGlBr9Eo="
+	key_pub_peer="2ZM9RvDmMZS/Nuh8OaVaJrwFbO57/WJgeU+JoQ//nko="
+
+	setup_wg_common wg0 inet $ip_wg_local 24 $port "$key_priv_local" tun0
+	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
+
+	$DEBUG && netstat -nr -f inet
+
+	# XXX
+	atf_check -s exit:0 ifconfig tun0 $ip_wg_local/24
+	atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
+
+	$DEBUG && ifconfig tun0
+	$DEBUG && netstat -nr -f inet
+
+	$ping $ip_wg_peer
+
+	export RUMP_SERVER=$SOCK_LOCAL
+	$ifconfig wg0 destroy
+}
+
+wg_userspace_basic_cleanup()
+{
+
+	$DEBUG && dump
+	# XXX
+	ifconfig tun0 destroy
+	cleanup
+}
+
 atf_init_test_cases()
 {
 
 	atf_add_test_case wg_interoperability_basic
-	#atf_add_test_case wg_interoperability_cookie
+	atf_add_test_case wg_interoperability_cookie
+	atf_add_test_case wg_userspace_basic
 }

@@ -80,10 +80,13 @@ setup_wg_common()
 	local prefix=$4
 	local port=$5
 	local key_priv="$6"
+	local tun=$7
 	local privfile=./tmp
 
 	$ifconfig $ifname create
-	$ifconfig $ifname linkstr tun0
+	if [ -n "$tun" ]; then
+		$ifconfig $ifname linkstr $tun
+	fi
 	$ifconfig $ifname $proto $ip/$prefix
 	if [ $proto = inet ]; then
 		# Need to create a local route for $ifname
