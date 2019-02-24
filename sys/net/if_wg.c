@@ -165,9 +165,6 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #define WGLOG(level, fmt, args...)	log(level, "%s: " fmt, __func__, ##args)
 
-#define WG_DEBUG_LOG
-#define WG_DEBUG_TRACE
-
 /* Debug options */
 #ifdef WG_DEBUG
 /* Output debug logs */
