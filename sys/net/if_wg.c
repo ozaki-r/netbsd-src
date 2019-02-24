@@ -4072,6 +4072,36 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 
 	default:
 		error = ifioctl_common(ifp, cmd, data);
+
+#ifdef WG_RUMPKERNEL
+		if (!wg_user_mode(wg))
+			break;
+		/* Do the same to the corresponding tun device on the host */
+		/*
+		 * XXX Actually the command has not been handled yet.  It
+		 *     will be handled via pr_ioctl form doifioctl later.
+		 */
+		switch (cmd) {
+		case SIOCAIFADDR:
+		case SIOCDIFADDR: {
+			struct in_aliasreq _ifra = *(struct in_aliasreq *)data;
+			struct in_aliasreq *ifra = &_ifra;
+			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
+			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET);
+			break;
+		    }
+#ifdef INET6
+		case SIOCAIFADDR_IN6:
+		case SIOCDIFADDR_IN6: {
+			struct in6_aliasreq _ifra = *(struct in6_aliasreq *)data;
+			struct in6_aliasreq *ifra = &_ifra;
+			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
+			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET6);
+			break;
+		    }
+#endif
+		}
+#endif /* WG_RUMPKERNEL */
 	}
 
 	return error;

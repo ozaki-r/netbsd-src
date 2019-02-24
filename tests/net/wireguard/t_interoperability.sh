@@ -255,12 +255,6 @@ wg_userspace_basic_body()
 	setup_wg_common wg0 inet $ip_wg_local 24 $port "$key_priv_local" tun0
 	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
 
-	$DEBUG && netstat -nr -f inet
-
-	# XXX
-	atf_check -s exit:0 ifconfig tun0 $ip_wg_local/24
-	#atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
-
 	$DEBUG && ifconfig tun0
 	$DEBUG && netstat -nr -f inet
 

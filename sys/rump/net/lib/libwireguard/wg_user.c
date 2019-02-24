@@ -233,6 +233,23 @@ rumpcomp_wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 	rumpuser_component_schedule(cookie);
 }
 
+int
+rumpcomp_wg_user_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
+{
+	void *cookie = rumpuser_component_unschedule();
+	int s, error;
+
+	s = socket(af, SOCK_DGRAM, 0);
+	if (s == -1)
+		return errno;
+	error = ioctl(s, cmd, data);
+	close(s);
+
+	rumpuser_component_schedule(cookie);
+
+	return error == -1 ? errno : 0;
+}
+
 int wg_user_dying(struct wg_user *);
 int
 wg_user_dying(struct wg_user *wgu)
@@ -267,5 +284,12 @@ rumpcomp_wg_user_destroy(struct wg_user *wgu)
 	free(wgu);
 
 	rumpuser_component_schedule(cookie);
+}
+
+char *
+rumpcomp_wg_user_get_tunname(struct wg_user *wgu)
+{
+
+	return wgu->wgu_tun_name;
 }
 #endif

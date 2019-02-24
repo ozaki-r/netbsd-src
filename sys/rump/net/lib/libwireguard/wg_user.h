@@ -35,4 +35,7 @@ int	rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *,
 void	rumpcomp_wg_user_destroy(struct wg_user *);
 
 void	rumpcomp_wg_user_send(struct wg_user *, struct iovec *, size_t);
+int	rumpcomp_wg_user_ioctl(struct wg_user *, u_long, void *, int);
 void	rump_wg_user_recv(struct wg_softc *, struct iovec *, size_t);
+
+char *	rumpcomp_wg_user_get_tunname(struct wg_user *);
