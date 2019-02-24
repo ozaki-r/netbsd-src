@@ -229,7 +229,8 @@ wg_userspace_basic_body()
 	local ip_peer=10.0.0.2
 	local ip_wg_local=10.0.4.1
 	local ip_wg_peer=10.0.4.2
-	local port=52428
+	local port_local=52429
+	local port_peer=52428
 	local outfile=./out
 
 	if [ "$ATF_WIREGUARD_USERSPACE" != yes ]; then
@@ -239,9 +240,6 @@ wg_userspace_basic_body()
 	export RUMP_SERVER=$SOCK_LOCAL
 	rump_server_crypto_start $SOCK_LOCAL virtif wireguard netinet6
 	atf_check -s exit:0 rump.sysctl -q -w net.inet.ip.dad_count=0
-	atf_check -s exit:0 rump.ifconfig virt0 create
-	atf_check -s exit:0 rump.ifconfig virt0 $ip_local/24
-	atf_check -s exit:0 rump.ifconfig virt0 up
 
 	$DEBUG && netstat -nr -f inet
 
@@ -252,8 +250,8 @@ wg_userspace_basic_body()
 	key_priv_peer="EF9D8AOkmxjlkiRFqBnfJS+RJJHbUy02u+VkGlBr9Eo="
 	key_pub_peer="2ZM9RvDmMZS/Nuh8OaVaJrwFbO57/WJgeU+JoQ//nko="
 
-	setup_wg_common wg0 inet $ip_wg_local 24 $port "$key_priv_local" tun0
-	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port $ip_wg_peer/32
+	setup_wg_common wg0 inet $ip_wg_local 24 $port_local "$key_priv_local" tun0
+	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port_peer $ip_wg_peer/32
 
 	$DEBUG && ifconfig tun0
 	$DEBUG && netstat -nr -f inet

@@ -1409,6 +1409,19 @@ wg_send(struct wg_peer *wgp, struct mbuf *m)
 	struct psref psref;
 	struct wg_sockaddr *wgsa;
 
+#ifdef WG_RUMPKERNEL
+	struct wg_softc *wg = wgp->wgp_sc;
+	if (wg_user_mode(wg)) {
+		struct iovec iov[1];
+		wgsa = wg_get_endpoint_sa(wgp, &psref);
+		iov[0].iov_base = mtod(m, void *);
+		iov[0].iov_len = m->m_len;
+		error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
+		wg_put_sa(wgp, wgsa, &psref);
+		return error;
+	}
+#endif
+
 	so = wg_get_so_by_peer(wgp);
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
 	error = sosend(so, wgsatosa(wgsa), NULL, m, NULL, 0, curlwp);
@@ -2381,7 +2394,7 @@ out:
 }
 
 static void
-wg_handle_packet(struct wg_softc *wg, struct mbuf *m, struct sockaddr *src)
+wg_handle_packet(struct wg_softc *wg, struct mbuf *m, const struct sockaddr *src)
 {
 	struct wg_msg *wgm;
 
@@ -2396,11 +2409,9 @@ wg_handle_packet(struct wg_softc *wg, struct mbuf *m, struct sockaddr *src)
 	case WG_MSG_TYPE_COOKIE:
 		wg_handle_msg_cookie(wg, (struct wg_msg_cookie *)wgm);
 		break;
-#if 0
 	case WG_MSG_TYPE_DATA:
 		wg_handle_msg_data(wg, m, src);
 		break;
-#endif
 	default:
 		WG_LOG_RATECHECK(&wg->wg_ppsratecheck, LOG_DEBUG,
 		    "Unexpected msg type: %u", wgm->wgm_type);
@@ -2604,6 +2615,16 @@ wg_bind_port(struct wg_softc *wg, const uint16_t port)
 
 	if (port != 0 && old_port == port)
 		return 0;
+
+#ifdef WG_RUMPKERNEL
+	if (wg_user_mode(wg)) {
+		error = rumpcomp_wg_user_sock_bind(wg->wg_user, port);
+		if (error == 0)
+			wg->wg_listen_port = port;
+		printf("error = %d\n", error);
+		return error;
+	}
+#endif
 
 	struct sockaddr_in _sin, *sin = &_sin;
 	sin->sin_len = sizeof(*sin);
@@ -3277,6 +3298,19 @@ wg_udp_output(struct wg_peer *wgp, struct mbuf *m)
 	struct wg_sockaddr *wgsa;
 	int error;
 	struct socket *so = wg_get_so_by_peer(wgp);
+
+#ifdef WG_RUMPKERNEL
+	struct wg_softc *wg = wgp->wgp_sc;
+	if (wg_user_mode(wg)) {
+		struct iovec iov[1];
+		wgsa = wg_get_endpoint_sa(wgp, &psref);
+		iov[0].iov_base = mtod(m, void *);
+		iov[0].iov_len = m->m_len;
+		error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
+		wg_put_sa(wgp, wgsa, &psref);
+		return error;
+	}
+#endif
 
 	solock(so);
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
@@ -4272,6 +4306,28 @@ rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
 
 	(void)wg_output(ifp, m, dst, NULL);
+}
+
+void
+rump_wg_user_sock_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+{
+	struct mbuf *m;
+	const struct sockaddr *src;
+
+	WG_TRACE("");
+
+	src = iov[0].iov_base;
+
+	m = m_gethdr(M_NOWAIT, MT_DATA);
+	if (m == NULL)
+		return;
+	m->m_len = m->m_pkthdr.len = 0;
+	m_copyback(m, 0, iov[1].iov_len, iov[1].iov_base);
+
+	WG_DLOG("iov_len=%lu\n", iov[1].iov_len);
+	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
+
+	wg_handle_packet(wg, m, src);
 }
 
 #endif

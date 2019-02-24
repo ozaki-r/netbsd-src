@@ -41,6 +41,8 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <net/if.h>
 #include <net/if_tun.h>
 
+#include <netinet/in.h>
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -62,6 +64,8 @@ struct wg_user {
 	char wgu_tun_name[IFNAMSIZ];
 
 	int wgu_fd;
+	int wgu_sock4;
+	int wgu_sock6;
 	int wgu_pipe[2];
 	pthread_t wgu_rcvthr;
 
@@ -107,7 +111,7 @@ static void *
 wg_user_rcvthread(void *aaargh)
 {
 	struct wg_user *wgu = aaargh;
-	struct pollfd pfd[2];
+	struct pollfd pfd[4];
 	ssize_t nn = 0;
 	int prv;
 
@@ -117,11 +121,15 @@ wg_user_rcvthread(void *aaargh)
 	pfd[0].events = POLLIN;
 	pfd[1].fd = wgu->wgu_pipe[0];
 	pfd[1].events = POLLIN;
+	pfd[2].fd = wgu->wgu_sock4;
+	pfd[2].events = POLLIN;
+	pfd[3].fd = wgu->wgu_sock6;
+	pfd[3].events = POLLIN;
 
 	while (!wgu->wgu_dying) {
 		struct iovec iov[2];
 
-		prv = poll(pfd, 2, -1);
+		prv = poll(pfd, 4, -1);
 		if (prv == 0)
 			continue;
 		if (prv == -1) {
@@ -134,27 +142,70 @@ wg_user_rcvthread(void *aaargh)
 		if (pfd[1].revents & POLLIN)
 			continue;
 
-		nn = read(wgu->wgu_fd, wgu->wgu_rcvbuf, sizeof(wgu->wgu_rcvbuf));
-		if (nn == -1 && errno == EAGAIN)
-			continue;
+		if (pfd[0].revents & POLLIN) {
+			nn = read(wgu->wgu_fd, wgu->wgu_rcvbuf, sizeof(wgu->wgu_rcvbuf));
+			if (nn == -1 && errno == EAGAIN)
+				continue;
 
-		if (nn < 1) {
-			/* XXX */
-			fprintf(stderr, "%s: receive failed\n",
-			    wgu->wgu_tun_name);
-			sleep(1);
-			continue;
+			if (nn < 1) {
+				/* XXX */
+				fprintf(stderr, "%s: receive failed\n",
+				    wgu->wgu_tun_name);
+				sleep(1);
+				continue;
+			}
+
+			iov[0].iov_base = wgu->wgu_rcvbuf;
+			iov[0].iov_len = ((struct sockaddr *)wgu->wgu_rcvbuf)->sa_len;
+
+			iov[1].iov_base = (char *)wgu->wgu_rcvbuf + iov[0].iov_len;
+			iov[1].iov_len = nn - iov[0].iov_len;
+
+			rumpuser_component_schedule(NULL);
+			rump_wg_user_recv(wgu->wgu_sc, iov, 2);
+			rumpuser_component_unschedule();
 		}
 
-		iov[0].iov_base = wgu->wgu_rcvbuf;
-		iov[0].iov_len = ((struct sockaddr *)wgu->wgu_rcvbuf)->sa_len;
+		if (pfd[2].revents & POLLIN) {
+			struct sockaddr_in sin;
+			socklen_t len = sizeof(sin);
+			nn = recvfrom(wgu->wgu_sock4, wgu->wgu_rcvbuf,
+			    sizeof(wgu->wgu_rcvbuf), 0, (struct sockaddr *)&sin,
+			    &len);
+			if (nn == -1 && errno == EAGAIN)
+				continue;
+			if (len != sizeof(sin))
+				continue;
+			iov[0].iov_base = &sin;
+			iov[0].iov_len = sin.sin_len;
 
-		iov[1].iov_base = (char *)wgu->wgu_rcvbuf + iov[0].iov_len;
-		iov[1].iov_len = nn - iov[0].iov_len;
+			iov[1].iov_base = wgu->wgu_rcvbuf;
+			iov[1].iov_len = nn;
 
-		rumpuser_component_schedule(NULL);
-		rump_wg_user_recv(wgu->wgu_sc, iov, 2);
-		rumpuser_component_unschedule();
+			rumpuser_component_schedule(NULL);
+			rump_wg_user_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpuser_component_unschedule();
+		}
+		if (pfd[3].revents & POLLIN) {
+			struct sockaddr_in6 sin6;
+			socklen_t len = sizeof(sin6);
+			nn = recvfrom(wgu->wgu_sock6, wgu->wgu_rcvbuf,
+			    sizeof(wgu->wgu_rcvbuf), 0, (struct sockaddr *)&sin6,
+			    &len);
+			if (nn == -1 && errno == EAGAIN)
+				continue;
+			if (len != sizeof(sin6))
+				continue;
+			iov[0].iov_base = &sin6;
+			iov[0].iov_len = sin6.sin6_len;
+
+			iov[1].iov_base = wgu->wgu_rcvbuf;
+			iov[1].iov_len = nn;
+
+			rumpuser_component_schedule(NULL);
+			rump_wg_user_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpuser_component_unschedule();
+		}
 	}
 
 	assert(wgu->wgu_dying);
@@ -192,17 +243,29 @@ rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *wg,
 		goto oerr3;
 	}
 
+	wgu->wgu_sock4 = socket(AF_INET, SOCK_DGRAM, 0);
+	wgu->wgu_sock6 = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (wgu->wgu_sock4 == -1 || wgu->wgu_sock6 == -1) {
+		rv = errno;
+		goto oerr4;
+	}
+
 	rv = pthread_create(&wgu->wgu_rcvthr, NULL, wg_user_rcvthread, wgu);
 	if (rv != 0)
-		goto oerr4;
+		goto oerr5;
 
 	rumpuser_component_schedule(cookie);
 	*wgup = wgu;
 	return 0;
 
- oerr4:
+ oerr5:
 	close(wgu->wgu_pipe[0]);
 	close(wgu->wgu_pipe[1]);
+ oerr4:
+	if (wgu->wgu_sock4 != -1)
+		close(wgu->wgu_sock4);
+	if (wgu->wgu_sock6 != -1)
+		close(wgu->wgu_sock6);
  oerr3:
 	close_tun(wgu);
  oerr2:
@@ -234,6 +297,34 @@ rumpcomp_wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 }
 
 int
+rumpcomp_wg_user_sock_send(struct wg_user *wgu, struct sockaddr *sa,
+    struct iovec *iov, size_t iovlen)
+{
+	void *cookie = rumpuser_component_unschedule();
+	int s, error = 0;
+	size_t i;
+	ssize_t sent;
+
+	if (sa->sa_family == AF_INET)
+		s = wgu->wgu_sock4;
+	else
+		s = wgu->wgu_sock6;
+
+	for (i = 0; i < iovlen; i++) {
+		sent = sendto(s, iov[i].iov_base, iov[i].iov_len, 0, sa,
+		    sa->sa_len);
+		if (sent == -1 || (size_t)sent != iov[i].iov_len) {
+			error = errno;
+			break;
+		}
+	}
+
+	rumpuser_component_schedule(cookie);
+
+	return error;
+}
+
+int
 rumpcomp_wg_user_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
 {
 	void *cookie = rumpuser_component_unschedule();
@@ -248,6 +339,36 @@ rumpcomp_wg_user_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
 	rumpuser_component_schedule(cookie);
 
 	return error == -1 ? errno : 0;
+}
+
+int
+rumpcomp_wg_user_sock_bind(struct wg_user *wgu, const uint16_t port)
+{
+	int error;
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_len = sizeof(sin);
+	sin.sin_addr.s_addr = INADDR_ANY;
+	sin.sin_port = htons(port);
+
+	error = bind(wgu->wgu_sock4, (struct sockaddr *)&sin, sizeof(sin));
+	if (error == -1)
+		return errno;
+
+	memset(&sin6, 0, sizeof(sin6));
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_len = sizeof(sin6);
+	sin6.sin6_addr = in6addr_any;
+	sin6.sin6_port = htons(port);
+
+	error = bind(wgu->wgu_sock6, (struct sockaddr *)&sin6, sizeof(sin6));
+	if (error == -1)
+		return errno;
+
+	return 0;
 }
 
 int wg_user_dying(struct wg_user *);
