@@ -2381,26 +2381,9 @@ out:
 }
 
 static void
-wg_handle_packets(struct wg_softc *wg, const int af)
+wg_handle_packet(struct wg_softc *wg, struct mbuf *m, struct sockaddr *src)
 {
-	int error, flags;
-	struct socket *so = wg_get_so_by_af(wg->wg_worker, af);
-	struct mbuf *m = NULL;
-	struct uio dummy_uio;
 	struct wg_msg *wgm;
-	struct mbuf *paddr = NULL;
-	struct sockaddr *src;
-
-	flags = MSG_DONTWAIT;
-	dummy_uio.uio_resid = 1000000000;
-	error = so->so_receive(so, &paddr, &dummy_uio, &m, NULL, &flags);
-	if (error || m == NULL) {
-		//if (error == EWOULDBLOCK)
-		return;
-	}
-
-	KASSERT(paddr != NULL);
-	src = mtod(paddr, struct sockaddr *);
 
 	wgm = mtod(m, struct wg_msg *);
 	switch (wgm->wgm_type) {
@@ -2423,6 +2406,35 @@ wg_handle_packets(struct wg_softc *wg, const int af)
 		    "Unexpected msg type: %u", wgm->wgm_type);
 		m_freem(m);
 		break;
+	}
+}
+
+static void
+wg_receive_packets(struct wg_softc *wg, const int af)
+{
+
+	while (true) {
+		int error, flags;
+		struct socket *so;
+		struct mbuf *m = NULL;
+		struct uio dummy_uio;
+		struct mbuf *paddr = NULL;
+		struct sockaddr *src;
+
+		so = wg_get_so_by_af(wg->wg_worker, af);
+		flags = MSG_DONTWAIT;
+		dummy_uio.uio_resid = 1000000000;
+
+		error = so->so_receive(so, &paddr, &dummy_uio, &m, NULL, &flags);
+		if (error || m == NULL) {
+			//if (error == EWOULDBLOCK)
+			return;
+		}
+
+		KASSERT(paddr != NULL);
+		src = mtod(paddr, struct sockaddr *);
+
+		wg_handle_packet(wg, m, src);
 	}
 }
 
@@ -2561,9 +2573,9 @@ wg_worker(void *arg)
 		mutex_exit(&wgw->wgw_lock);
 
 		if (ISSET(reasons, WG_WAKEUP_REASON_RECEIVE_PACKETS_IPV4))
-			wg_handle_packets(wg, AF_INET);
+			wg_receive_packets(wg, AF_INET);
 		if (ISSET(reasons, WG_WAKEUP_REASON_RECEIVE_PACKETS_IPV6))
-			wg_handle_packets(wg, AF_INET6);
+			wg_receive_packets(wg, AF_INET6);
 		if (!ISSET(reasons, WG_WAKEUP_REASON_PEER))
 			continue;
 
