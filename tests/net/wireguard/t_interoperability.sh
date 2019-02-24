@@ -207,14 +207,14 @@ wg_userspace_basic_head()
 # [Peer]
 #   ip addr add 10.0.0.2/24 dev <external-interface>
 #   ip link add wg0 type wireguard
-#   ip addr add 10.0.1.2/24 dev wg0
+#   ip addr add 10.0.4.2/24 dev wg0
 #   privkey="EF9D8AOkmxjlkiRFqBnfJS+RJJHbUy02u+VkGlBr9Eo="
 #   ip link set wg0 up
 #   echo $privkey > /tmp/private-key
 #   wg set wg0 listen-port 52428
 #   wg set wg0 private-key /tmp/private-key
-#   pubkey="2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs="
-#   wg set wg0 peer $pubkey endpoint 10.0.0.3:52428 allowed-ips 10.0.1.1/32
+#   pubkey="6mQ4lUO3oq5O8FfGW52CFXNbmh5iFT1XMqPzpdrc0nE="
+#   wg set wg0 peer $pubkey endpoint 10.0.0.3:52428 allowed-ips 10.0.4.1/32
 #
 wg_userspace_basic_body()
 {
@@ -227,8 +227,8 @@ wg_userspace_basic_body()
 	local key_pub_peer=
 	local ip_local=10.0.0.3
 	local ip_peer=10.0.0.2
-	local ip_wg_local=10.0.1.1
-	local ip_wg_peer=10.0.1.2
+	local ip_wg_local=10.0.4.1
+	local ip_wg_peer=10.0.4.2
 	local port=52428
 	local outfile=./out
 
@@ -247,8 +247,8 @@ wg_userspace_basic_body()
 
 	$ping $ip_peer
 
-	key_priv_local="aK3TbzUNDO4aeDRX54x8bOG+NaKuqXKt7Hwq0Uz69Wo="
-	key_pub_local="2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs="
+	key_priv_local="6B0dualfIAiEG7/jFGOIHrJMhuypq87xCER/0ieIpE4="
+	key_pub_local="6mQ4lUO3oq5O8FfGW52CFXNbmh5iFT1XMqPzpdrc0nE="
 	key_priv_peer="EF9D8AOkmxjlkiRFqBnfJS+RJJHbUy02u+VkGlBr9Eo="
 	key_pub_peer="2ZM9RvDmMZS/Nuh8OaVaJrwFbO57/WJgeU+JoQ//nko="
 
@@ -259,7 +259,7 @@ wg_userspace_basic_body()
 
 	# XXX
 	atf_check -s exit:0 ifconfig tun0 $ip_wg_local/24
-	atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
+	#atf_check -s exit:0 -o ignore route add -net $ip_wg_local/24 -link tun0 -iface
 
 	$DEBUG && ifconfig tun0
 	$DEBUG && netstat -nr -f inet
