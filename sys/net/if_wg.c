@@ -2584,7 +2584,7 @@ wg_wakeup_worker(struct wg_worker *wgw, const int reason)
 }
 
 static int
-wg_update_port(struct wg_softc *wg, const uint16_t port)
+wg_bind_port(struct wg_softc *wg, const uint16_t port)
 {
 	int error;
 	struct wg_worker *wgw = wg->wg_worker;
@@ -3738,7 +3738,7 @@ wg_ioctl_set_listen_port(struct wg_softc *wg, struct ifdrv *ifd)
 	port = prop_number_unsigned_integer_value(prop_obj);
 	if (port != (uint64_t)(uint16_t)port)
 		goto out;
-	error = wg_update_port(wg, (uint16_t)port);
+	error = wg_bind_port(wg, (uint16_t)port);
 
 out:
 	kmem_free(buf, ifd->ifd_len + 1);
