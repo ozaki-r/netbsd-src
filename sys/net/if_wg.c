@@ -492,6 +492,8 @@ struct wg_peer {
 #define WGP_TASK_DESTROY_PREV_SESSION		__BIT(3)
 };
 
+struct wg_ops;
+
 struct wg_softc {
 	struct ifnet	wg_if;
 	LIST_ENTRY(wg_softc) wg_list;
@@ -512,6 +514,8 @@ struct wg_softc {
 	struct radix_node_head	*wg_rtable_ipv6;
 
 	struct wg_ppsratecheck	wg_ppsratecheck;
+
+	struct wg_ops		*wg_ops;
 
 #ifdef WG_RUMPKERNEL
 	struct wg_user		*wg_user;
@@ -577,20 +581,47 @@ static void	wg_clear_states(struct wg_session *);
 static void	wg_get_peer(struct wg_peer *, struct psref *);
 static void	wg_put_peer(struct wg_peer *, struct psref *);
 
+static int	wg_send(struct wg_peer *, struct mbuf *);
+static int	wg_udp_send(struct wg_peer *, struct mbuf *);
 static int	wg_output(struct ifnet *, struct mbuf *,
 			   const struct sockaddr *, const struct rtentry *);
-static void	wg_input(struct ifnet *, struct mbuf *, int);
+static void	wg_input(struct ifnet *, struct mbuf *, const int);
 static int	wg_ioctl(struct ifnet *, u_long, void *);
+static int	wg_bind_port(struct wg_softc *, const uint16_t);
 
 static int	wg_clone_create(struct if_clone *, int);
 static int	wg_clone_destroy(struct ifnet *);
 
 static void	wg_setup_sysctl(void);
 
+struct wg_ops {
+	int (*send)(struct wg_peer *, struct mbuf *);
+	int (*udp_send)(struct wg_peer *, struct mbuf *);
+	void (*input)(struct ifnet *, struct mbuf *, const int);
+	int (*bind_port)(struct wg_softc *, const uint16_t);
+};
+
+struct wg_ops wg_ops_rumpkernel = {
+	.send		= wg_send,
+	.udp_send	= wg_udp_send,
+	.input		= wg_input,
+	.bind_port	= wg_bind_port,
+};
+
 #ifdef WG_RUMPKERNEL
 static bool	wg_user_mode(struct wg_softc *);
 static int	wg_ioctl_linkstr(struct wg_softc *, struct ifdrv *);
-static void	wg_input_user(struct wg_softc *, struct mbuf *, const int);
+
+static int	wg_send_user(struct wg_peer *, struct mbuf *);
+static void	wg_input_user(struct ifnet *, struct mbuf *, const int);
+static int	wg_bind_port_user(struct wg_softc *, const uint16_t);
+
+struct wg_ops wg_ops_rumpuser = {
+	.send		= wg_send_user,
+	.udp_send	= wg_send_user,
+	.input		= wg_input_user,
+	.bind_port	= wg_bind_port_user,
+};
 #endif
 
 #define WG_PEER_READER_FOREACH(wgp, wg)					\
@@ -1409,19 +1440,6 @@ wg_send(struct wg_peer *wgp, struct mbuf *m)
 	struct psref psref;
 	struct wg_sockaddr *wgsa;
 
-#ifdef WG_RUMPKERNEL
-	struct wg_softc *wg = wgp->wgp_sc;
-	if (wg_user_mode(wg)) {
-		struct iovec iov[1];
-		wgsa = wg_get_endpoint_sa(wgp, &psref);
-		iov[0].iov_base = mtod(m, void *);
-		iov[0].iov_len = m->m_len;
-		error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
-		wg_put_sa(wgp, wgsa, &psref);
-		return error;
-	}
-#endif
-
 	so = wg_get_so_by_peer(wgp);
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
 	error = sosend(so, wgsatosa(wgsa), NULL, m, NULL, 0, curlwp);
@@ -1465,7 +1483,7 @@ wg_send_handshake_initiation_message(struct wg_softc *wg, struct wg_peer *wgp)
 
 	wg_fill_msg_init(wg, wgp, wgs, wgmi);
 
-	error = wg_send(wgp, m);
+	error = wg->wg_ops->send(wgp, m);
 	if (error == 0) {
 		WG_TRACE("init msg sent");
 
@@ -1782,7 +1800,7 @@ wg_send_handshake_response_message(struct wg_softc *wg, struct wg_peer *wgp,
 	wgmr = mtod(m, struct wg_msg_resp *);
 	wg_fill_msg_resp(wg, wgp, wgmr, wgmi);
 
-	error = wg_send(wgp, m);
+	error = wg->wg_ops->send(wgp, m);
 	if (error == 0)
 		WG_TRACE("resp msg sent");
 	return error;
@@ -1879,7 +1897,7 @@ wg_send_cookie_message(struct wg_softc *wg, struct wg_peer *wgp,
 	wgmc = mtod(m, struct wg_msg_cookie *);
 	wg_fill_msg_cookie(wg, wgp, wgmc, sender, mac1, src);
 
-	error = wg_send(wgp, m);
+	error = wg->wg_ops->send(wgp, m);
 	if (error == 0)
 		WG_TRACE("cookie msg sent");
 	return error;
@@ -2270,7 +2288,7 @@ wg_handle_msg_data(struct wg_softc *wg, struct mbuf *m,
 
 	ok = wg_validate_route(wg, wgp, af, decrypted_buf);
 	if (ok) {
-		wg_input(&wg->wg_if, n, af);
+		wg->wg_ops->input(&wg->wg_if, n, af);
 	} else {
 		WG_LOG_RATECHECK(&wgp->wgp_ppsratecheck, LOG_DEBUG,
 		    "invalid source address\n");
@@ -2615,16 +2633,6 @@ wg_bind_port(struct wg_softc *wg, const uint16_t port)
 
 	if (port != 0 && old_port == port)
 		return 0;
-
-#ifdef WG_RUMPKERNEL
-	if (wg_user_mode(wg)) {
-		error = rumpcomp_wg_user_sock_bind(wg->wg_user, port);
-		if (error == 0)
-			wg->wg_listen_port = port;
-		printf("error = %d\n", error);
-		return error;
-	}
-#endif
 
 	struct sockaddr_in _sin, *sin = &_sin;
 	sin->sin_len = sizeof(*sin);
@@ -3120,6 +3128,7 @@ wg_clone_create(struct if_clone *ifc, int unit)
 	PSLIST_INIT(&wg->wg_peers);
 	wg->wg_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NONE);
 	wg->wg_rwlock = rw_obj_alloc();
+	wg->wg_ops = &wg_ops_rumpkernel;
 
 	error = wg_if_attach(wg);
 	if (error != 0) {
@@ -3294,25 +3303,12 @@ error:
 }
 
 static int
-wg_udp_output(struct wg_peer *wgp, struct mbuf *m)
+wg_udp_send(struct wg_peer *wgp, struct mbuf *m)
 {
 	struct psref psref;
 	struct wg_sockaddr *wgsa;
 	int error;
 	struct socket *so = wg_get_so_by_peer(wgp);
-
-#ifdef WG_RUMPKERNEL
-	struct wg_softc *wg = wgp->wgp_sc;
-	if (wg_user_mode(wg)) {
-		struct iovec iov[1];
-		wgsa = wg_get_endpoint_sa(wgp, &psref);
-		iov[0].iov_base = mtod(m, void *);
-		iov[0].iov_len = m->m_len;
-		error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
-		wg_put_sa(wgp, wgsa, &psref);
-		return error;
-	}
-#endif
 
 	solock(so);
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
@@ -3404,7 +3400,7 @@ wg_send_data_message(struct wg_peer *wgp, struct wg_session *wgs,
 	    wgs->wgs_tkey_send, wgmd->wgmd_counter, padded_buf, padded_len,
 	    NULL, 0);
 
-	error = wg_udp_output(wgp, n);
+	error = wg->wg_ops->udp_send(wgp, n);
 	if (error == 0) {
 		struct ifnet *ifp = &wg->wg_if;
 		ifp->if_obytes += mlen;
@@ -3448,13 +3444,6 @@ wg_input(struct ifnet *ifp, struct mbuf *m, const int af)
 	KASSERT(af == AF_INET || af == AF_INET6);
 
 	WG_TRACE("");
-#ifdef WG_RUMPKERNEL
-	struct wg_softc *wg = ifp->if_softc;
-	if (wg_user_mode(wg)) {
-		wg_input_user(wg, m, af);
-		return;
-	}
-#endif
 
 	m_set_rcvif(m, ifp);
 	pktlen = m->m_pkthdr.len;
@@ -3786,7 +3775,7 @@ wg_ioctl_set_listen_port(struct wg_softc *wg, struct ifdrv *ifd)
 	port = prop_number_unsigned_integer_value(prop_obj);
 	if (port != (uint64_t)(uint16_t)port)
 		goto out;
-	error = wg_bind_port(wg, (uint16_t)port);
+	error = wg->wg_ops->bind_port(wg, (uint16_t)port);
 
 out:
 	kmem_free(buf, ifd->ifd_len + 1);
@@ -4115,6 +4104,8 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 #ifdef WG_RUMPKERNEL
 	case SIOCSLINKSTR:
 		error = wg_ioctl_linkstr(wg, ifd);
+		if (error == 0)
+			wg->wg_ops = &wg_ops_rumpuser;
 		break;
 #endif
 
@@ -4256,11 +4247,35 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 	return error;
 }
 
-static void
-wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
+static int
+wg_send_user(struct wg_peer *wgp, struct mbuf *m)
 {
+	int error;
+	struct psref psref;
+	struct wg_sockaddr *wgsa;
+	struct wg_softc *wg = wgp->wgp_sc;
+	struct iovec iov[1];
+
+	wgsa = wg_get_endpoint_sa(wgp, &psref);
+
+	iov[0].iov_base = mtod(m, void *);
+	iov[0].iov_len = m->m_len;
+
+	error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
+
+	wg_put_sa(wgp, wgsa, &psref);
+
+	return error;
+}
+
+static void
+wg_input_user(struct ifnet *ifp, struct mbuf *m, const int af)
+{
+	struct wg_softc *wg = ifp->if_softc;
 	struct iovec iov[2];
 	struct sockaddr_storage ss;
+
+	KASSERT(af == AF_INET || af == AF_INET6);
 
 	WG_TRACE("");
 
@@ -4285,6 +4300,21 @@ wg_input_user(struct wg_softc *wg, struct mbuf *m, const int af)
 	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
 
 	rumpcomp_wg_user_send(wg->wg_user, iov, 2);
+}
+
+static int
+wg_bind_port_user(struct wg_softc *wg, const uint16_t port)
+{
+	int error;
+	uint16_t old_port = wg->wg_listen_port;
+
+	if (port != 0 && old_port == port)
+		return 0;
+
+	error = rumpcomp_wg_user_sock_bind(wg->wg_user, port);
+	if (error == 0)
+		wg->wg_listen_port = port;
+	return error;
 }
 
 void
