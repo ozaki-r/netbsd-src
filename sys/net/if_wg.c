@@ -4361,8 +4361,7 @@ rump_wg_user_sock_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 
 	wg_handle_packet(wg, m, src);
 }
-
-#endif
+#endif /* WG_RUMPKERNEL */
 
 /*
  * Module infrastructure
