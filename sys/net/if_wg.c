@@ -3151,8 +3151,10 @@ wg_clone_destroy(struct ifnet *ifp)
 	mutex_exit(&wg_softcs.lock);
 
 #ifdef WG_RUMPKERNEL
-	//if (wg_user_mode(wg))
-	//	rumpcomp_wg_user_destroy(wg->wg_user);
+	if (wg_user_mode(wg)) {
+		rumpcomp_wg_user_destroy(wg->wg_user);
+		wg->wg_user = NULL;
+	}
 #endif
 
 	bpf_detach(ifp);

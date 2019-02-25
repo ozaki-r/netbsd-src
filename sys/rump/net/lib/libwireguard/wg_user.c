@@ -103,8 +103,17 @@ open_tun(const char *tun_name)
 static void
 close_tun(struct wg_user *wgu)
 {
+	int s;
+	struct ifreq ifr = {};
 
 	close(wgu->wgu_fd);
+
+	s = socket(AF_INET, SOCK_DGRAM, 0);
+	if (s == -1)
+		return; /* XXX */
+	strcpy(ifr.ifr_name, wgu->wgu_tun_name);
+	(void)ioctl(s, SIOCIFDESTROY, &ifr);
+	close(s);
 }
 
 static void *
@@ -371,9 +380,8 @@ rumpcomp_wg_user_sock_bind(struct wg_user *wgu, const uint16_t port)
 	return 0;
 }
 
-int wg_user_dying(struct wg_user *);
-int
-wg_user_dying(struct wg_user *wgu)
+void
+rumpcomp_wg_user_destroy(struct wg_user *wgu)
 {
 	void *cookie = rumpuser_component_unschedule();
 
@@ -387,17 +395,6 @@ wg_user_dying(struct wg_user *wgu)
 		fprintf(stderr, "%s: failed to signal thread\n",
 		    wgu->wgu_tun_name);
 	}
-
-	rumpuser_component_schedule(cookie);
-
-	return 0;
-}
-
-void
-rumpcomp_wg_user_destroy(struct wg_user *wgu)
-{
-	void *cookie = rumpuser_component_unschedule();
-
 	pthread_join(wgu->wgu_rcvthr, NULL);
 	close_tun(wgu);
 	close(wgu->wgu_pipe[0]);

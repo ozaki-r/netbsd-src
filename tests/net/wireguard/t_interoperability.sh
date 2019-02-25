@@ -266,8 +266,6 @@ wg_userspace_basic_cleanup()
 {
 
 	$DEBUG && dump
-	# XXX
-	ifconfig tun0 destroy
 	cleanup
 }
 
