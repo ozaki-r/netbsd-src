@@ -1,0 +1,39 @@
+#!/bin/sh
+
+RUMPLIBS="-lrumpnet -lrumpnet_net -lrumpnet_netinet \
+    -lrumpdev -lrumpvfs -lrumpdev_opencrypto -lrumpkern_z \
+    -lrumpkern_crypto -lrumpnet_wireguard -lrumpnet_netinet6"
+HIJACKING="env LD_PRELOAD=/usr/lib/librumphijack.so \
+    RUMPHIJACK=path=/rump,socket=all:nolocal,sysctl=yes"
+
+if [ $(whoami) != root ]; then
+	echo run as root
+	exit 1
+fi
+
+tun=$1
+cmd=$2
+shift;shift
+args="$*"
+
+ifid=$(echo $tun | sed 's/tun//')
+wg=wg$ifid
+
+sock=/var/run/wg_rump.${tun}.sock
+export RUMP_SERVER=unix://$sock
+
+case $cmd in
+create)
+	rump_server $RUMPLIBS unix://$sock
+	rump.ifconfig $wg create
+	rump.ifconfig $wg linkstr $tun
+	;;
+destroy)
+	rump.halt
+	;;
+ifconfig)
+	rump.ifconfig $args
+	;;
+wgconfig)
+	$HIJACKING wgconfig $args
+esac
