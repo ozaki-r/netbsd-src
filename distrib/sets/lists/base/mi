@@ -2026,6 +2026,7 @@
 ./usr/sbin/wake					base-obsolete		obsolete
 ./usr/sbin/wakeonlan				base-netutil-bin
 ./usr/sbin/wg-keygen				base-netutil-bin
+./usr/sbin/wg-userspace				base-netutil-bin
 ./usr/sbin/wgconfig				base-netutil-bin
 ./usr/sbin/wiconfig				base-sysutil-bin
 ./usr/sbin/wire-test				base-netutil-bin
