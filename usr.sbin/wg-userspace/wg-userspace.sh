@@ -11,15 +11,15 @@ if [ $(whoami) != root ]; then
 	exit 1
 fi
 
-tun=$1
+ifid=$1
 cmd=$2
 shift;shift
 args="$*"
 
-ifid=$(echo $tun | sed 's/tun//')
+tun=tun$ifid
 wg=wg$ifid
 
-sock=/var/run/wg_rump.${tun}.sock
+sock=/var/run/wg_rump.${ifid}.sock
 export RUMP_SERVER=unix://$sock
 
 case $cmd in
