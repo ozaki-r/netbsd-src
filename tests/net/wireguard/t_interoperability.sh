@@ -253,6 +253,7 @@ wg_userspace_basic_body()
 	setup_wg_common wg0 inet $ip_wg_local 24 $port_local "$key_priv_local" tun0
 	add_peer wg0 peer0 $key_pub_peer $ip_peer:$port_peer $ip_wg_peer/32
 
+	$DEBUG && rump.ifconfig wg0
 	$DEBUG && ifconfig tun0
 	$DEBUG && netstat -nr -f inet
 
