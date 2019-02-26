@@ -2273,8 +2273,6 @@
 ./usr/share/man/cat5/virtual.0			man-postfix-catman	postfix,.cat
 ./usr/share/man/cat5/weekly.0			man-sys-catman		.cat
 ./usr/share/man/cat5/weekly.conf.0		man-sys-catman		.cat
-./usr/share/man/cat8/wg-keygen.0		man-netutil-catman	.cat
-./usr/share/man/cat8/wgconfig.0			man-netutil-catman	.cat
 ./usr/share/man/cat5/wpa_supplicant.conf.0	man-net-catman		.cat
 ./usr/share/man/cat5/wscons.conf.0		man-sys-catman		.cat
 ./usr/share/man/cat5/wsmoused.conf.0		man-sys-catman		.cat
@@ -3226,6 +3224,9 @@
 ./usr/share/man/cat8/walnut/MAKEDEV.0		man-obsolete		obsolete
 ./usr/share/man/cat8/walnut/makedev.0		man-obsolete		obsolete
 ./usr/share/man/cat8/wdogctl.0			man-sysutil-catman	.cat
+./usr/share/man/cat8/wg-keygen.0		man-netutil-catman	.cat
+./usr/share/man/cat8/wg-userspace.0		man-netutil-catman	.cat
+./usr/share/man/cat8/wgconfig.0			man-netutil-catman	.cat
 ./usr/share/man/cat8/wiconfig.0			man-netutil-catman	.cat
 ./usr/share/man/cat8/wire-test.0		man-netutil-catman	.cat
 ./usr/share/man/cat8/wizd.0			man-sysutil-catman	.cat
@@ -6081,6 +6082,7 @@
 ./usr/share/man/html8/wakeonlan.html		man-netutil-htmlman	html
 ./usr/share/man/html8/wdogctl.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/wg-keygen.html		man-netutil-htmlman	html
+./usr/share/man/html8/wg-userspace.html		man-netutil-htmlman	html
 ./usr/share/man/html8/wgconfig.html		man-netutil-htmlman	html
 ./usr/share/man/html8/wiconfig.html		man-netutil-htmlman	html
 ./usr/share/man/html8/wire-test.html		man-netutil-htmlman	html
@@ -9312,6 +9314,7 @@
 ./usr/share/man/man8/walnut/makedev.8		man-obsolete		obsolete
 ./usr/share/man/man8/wdogctl.8			man-sysutil-man		.man
 ./usr/share/man/man8/wg-keygen.8		man-netutil-man		.man
+./usr/share/man/man8/wg-userspace.8		man-netutil-man		.man
 ./usr/share/man/man8/wgconfig.8			man-netutil-man		.man
 ./usr/share/man/man8/wiconfig.8			man-netutil-man		.man
 ./usr/share/man/man8/wire-test.8		man-netutil-man		.man
