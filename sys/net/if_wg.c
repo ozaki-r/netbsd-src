@@ -4125,8 +4125,11 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 		case SIOCDIFADDR: {
 			struct in_aliasreq _ifra = *(struct in_aliasreq *)data;
 			struct in_aliasreq *ifra = &_ifra;
+			KASSERT(error == ENOTTY);
 			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
 			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET);
+			if (error == 0)
+				error = ENOTTY;
 			break;
 		    }
 #ifdef INET6
@@ -4134,8 +4137,11 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 		case SIOCDIFADDR_IN6: {
 			struct in6_aliasreq _ifra = *(struct in6_aliasreq *)data;
 			struct in6_aliasreq *ifra = &_ifra;
+			KASSERT(error == ENOTTY);
 			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
 			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET6);
+			if (error == 0)
+				error = ENOTTY;
 			break;
 		    }
 #endif
