@@ -11,6 +11,24 @@ if [ $(whoami) != root ]; then
 	exit 1
 fi
 
+usage()
+{
+	local prog=$(basename $0)
+
+	echo "Usage:"
+	echo -e "\t$prog <id> create"
+	echo -e "\t$prog <id> destroy"
+	echo -e "\t$prog <id> ifconfig [args...]"
+	echo -e "\t$prog <id> wgconfig [args...]"
+	echo
+	echo "<id>: must be a numeric number as it's used as an interface ID"
+	exit 1
+}
+
+if [ $# -lt 2 ]; then
+	usage
+fi
+
 ifid=$1
 cmd=$2
 shift;shift
@@ -36,4 +54,10 @@ ifconfig)
 	;;
 wgconfig)
 	$HIJACKING wgconfig $args
+	;;
+debug)
+	$HIJACKING $args
+	;;
+*)
+	usage
 esac
