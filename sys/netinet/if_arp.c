@@ -1603,7 +1603,7 @@ arp_dad_start(struct ifaddr *ifa)
 		log(LOG_DEBUG,
 		    "%s: called with non-tentative address %s(%s)\n", __func__,
 		    IN_PRINT(ipbuf, &ia->ia_addr.sin_addr),
-		    ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
+		    if_name(ifa->ifa_ifp));
 		return;
 	}
 	if (!ip_dad_enabled()) {
@@ -1612,7 +1612,6 @@ arp_dad_start(struct ifaddr *ifa)
 		arpannounce1(ifa);
 		return;
 	}
-	KASSERT(ifa->ifa_ifp != NULL);
 	if (!(ifa->ifa_ifp->if_flags & IFF_UP))
 		return;
 
@@ -1631,7 +1630,7 @@ arp_dad_start(struct ifaddr *ifa)
 		mutex_exit(&arp_dad_lock);
 		log(LOG_ERR, "%s: memory allocation failed for %s(%s)\n",
 		    __func__, IN_PRINT(ipbuf, &ia->ia_addr.sin_addr),
-		    ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
+		    if_name(ifa->ifa_ifp));
 		return;
 	}
 
@@ -1703,14 +1702,14 @@ arp_dad_timer(struct dadq *dp)
 	if (ia->ia4_flags & IN_IFF_DUPLICATED) {
 		log(LOG_ERR, "%s: called with duplicate address %s(%s)\n",
 		    __func__, IN_PRINT(ipbuf, &ia->ia_addr.sin_addr),
-		    ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
+		    if_name(ifa->ifa_ifp));
 		goto done;
 	}
 	if ((ia->ia4_flags & IN_IFF_TENTATIVE) == 0 && dp->dad_arp_acount == 0)
 	{
 		log(LOG_ERR, "%s: called with non-tentative address %s(%s)\n",
 		    __func__, IN_PRINT(ipbuf, &ia->ia_addr.sin_addr),
-		    ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
+		    if_name(ifa->ifa_ifp));
 		goto done;
 	}
 

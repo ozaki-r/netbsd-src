@@ -780,8 +780,7 @@ getroute:
 	 * destination address (which should probably be one of our own
 	 * addresses.)
 	 */
-	if (rt->rt_ifa && rt->rt_ifa->ifa_ifp &&
-	    rt->rt_ifa->ifa_ifp != *retifp &&
+	if (rt->rt_ifa->ifa_ifp != *retifp &&
 	    !if_is_deactivated(rt->rt_ifa->ifa_ifp)) {
 		if_put(*retifp, psref);
 		*retifp = rt->rt_ifa->ifa_ifp;

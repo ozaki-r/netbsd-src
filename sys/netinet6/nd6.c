@@ -1597,8 +1597,7 @@ nd6_rtrequest(int req, struct rtentry *rt, const struct rt_addrinfo *info)
 		 * If we have too many cache entries, initiate immediate
 		 * purging for some entries.
 		 */
-		if (rt->rt_ifp != NULL)
-			nd6_gc_neighbors(LLTABLE6(rt->rt_ifp), NULL);
+		nd6_gc_neighbors(LLTABLE6(rt->rt_ifp), NULL);
 		break;
 	    }
 

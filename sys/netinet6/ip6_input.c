@@ -502,8 +502,7 @@ ip6_input(struct mbuf *m, struct ifnet *rcvif)
 	 */
 #if defined(NFAITH) && 0 < NFAITH
 	if (ip6_keepfaith) {
-		if (rt != NULL && rt->rt_ifp != NULL &&
-		    rt->rt_ifp->if_type == IFT_FAITH) {
+		if (rt != NULL && rt->rt_ifp->if_type == IFT_FAITH) {
 			/* XXX do we need more sanity checks? */
 			ours = 1;
 			deliverifp = rt->rt_ifp; /* faith */

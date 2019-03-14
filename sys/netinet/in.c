@@ -2019,7 +2019,7 @@ in_lltable_rtcheck(struct ifnet *ifp, u_int flags, const struct sockaddr *l3addr
 	 * allow for ARP to proceed.
 	 */
 	if (rt->rt_flags & RTF_GATEWAY) {
-		if (!(rt->rt_flags & RTF_HOST) || !rt->rt_ifp ||
+		if (!(rt->rt_flags & RTF_HOST) ||
 		    rt->rt_ifp->if_type != IFT_ETHER ||
 		    (rt->rt_ifp->if_flags & IFF_NOARP) != 0 ||
 		    memcmp(rt->rt_gateway->sa_data, l3addr->sa_data,

@@ -318,7 +318,7 @@ faithprefix(struct in6_addr *in6)
 	sin6.sin6_len = sizeof(struct sockaddr_in6);
 	sin6.sin6_addr = *in6;
 	rt = rtalloc1((struct sockaddr *)&sin6, 0);
-	if (rt && rt->rt_ifp && rt->rt_ifp->if_type == IFT_FAITH &&
+	if (rt && rt->rt_ifp->if_type == IFT_FAITH &&
 	    (rt->rt_ifp->if_flags & IFF_UP) != 0)
 		ret = 1;
 	else

@@ -354,9 +354,8 @@ rt_get_ifa(struct rtentry *rt)
 {
 	struct ifaddr *ifa;
 
-	if ((ifa = rt->rt_ifa) == NULL)
-		return ifa;
-	else if (ifa->ifa_getifa == NULL)
+	ifa = rt->rt_ifa;
+	if (ifa->ifa_getifa == NULL)
 		return ifa;
 #if 0
 	else if (ifa->ifa_seqno != NULL && *ifa->ifa_seqno == rt->rt_ifa_seqno)
@@ -411,8 +410,7 @@ rt_replace_ifa(struct rtentry *rt, struct ifaddr *ifa)
 	if (rt->rt_ifa == ifa)
 		return;
 
-	if (rt->rt_ifa &&
-	    rt->rt_ifa != ifa &&
+	if (rt->rt_ifa != ifa &&
 	    rt->rt_ifa->ifa_flags & IFA_ROUTE &&
 	    rt_ifa_connected(rt, rt->rt_ifa))
 	{
@@ -530,11 +528,7 @@ dump_rt(const struct rtentry *rt)
 		log(LOG_DEBUG, "gw=%s ", buf);
 	}
 	log(LOG_DEBUG, "flags=%x ", rt->rt_flags);
-	if (rt->rt_ifp == NULL) {
-		log(LOG_DEBUG, "if=(NULL) ");
-	} else {
-		log(LOG_DEBUG, "if=%s ", rt->rt_ifp->if_xname);
-	}
+	log(LOG_DEBUG, "if=%s ", rt->rt_ifp->if_xname);
 	log(LOG_DEBUG, "\n");
 }
 #endif /* RT_DEBUG */
@@ -1193,18 +1187,16 @@ rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
 		if ((rt = rt_deladdr(rtbl, dst, netmask)) == NULL)
 			senderr(ESRCH);
 		rt->rt_flags &= ~RTF_UP;
-		if ((ifa = rt->rt_ifa)) {
-			if (ifa->ifa_flags & IFA_ROUTE &&
-			    rt_ifa_connected(rt, ifa)) {
-				RT_DPRINTF("rt->_rt_key = %p, ifa = %p, "
-				    "deleted IFA_ROUTE\n",
-				    (void *)rt->_rt_key, (void *)ifa);
-				ifa->ifa_flags &= ~IFA_ROUTE;
-			}
-			if (ifa->ifa_rtrequest)
-				ifa->ifa_rtrequest(RTM_DELETE, rt, info);
-			ifa = NULL;
+		ifa = rt->rt_ifa;
+		if (ifa->ifa_flags & IFA_ROUTE && rt_ifa_connected(rt, ifa)) {
+			RT_DPRINTF("rt->_rt_key = %p, ifa = %p, "
+			    "deleted IFA_ROUTE\n",
+			    (void *)rt->_rt_key, (void *)ifa);
+			ifa->ifa_flags &= ~IFA_ROUTE;
 		}
+		if (ifa->ifa_rtrequest)
+			ifa->ifa_rtrequest(RTM_DELETE, rt, info);
+		ifa = NULL;
 		rttrash++;
 		if (ret_nrt) {
 			*ret_nrt = rt;
@@ -1517,7 +1509,7 @@ rt_update(struct rtentry *rt, struct rt_addrinfo *info, void *rtm)
 		rt->rt_flags = (info->rti_flags & ~PRESERVED_RTF) |
 		    (rt->rt_flags & PRESERVED_RTF);
 	}
-	if (rt->rt_ifa && rt->rt_ifa->ifa_rtrequest)
+	if (rt->rt_ifa->ifa_rtrequest)
 		rt->rt_ifa->ifa_rtrequest(RTM_ADD, rt, info);
 #if defined(INET) || defined(INET6)
 	if (ifp_changed && rt_mask(rt) != NULL)
@@ -1567,10 +1559,8 @@ rt_newmsg(const int cmd, const struct rtentry *rt)
 	info.rti_info[RTAX_DST] = rt_getkey(rt);
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-	if (rt->rt_ifp) {
-		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
-		info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
-	}
+	info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
+	info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
 
 	rt_missmsg(cmd, &info, rt->rt_flags, 0);
 }
@@ -2277,7 +2267,6 @@ rt_delete_matched_entries(sa_family_t family, int (*f)(struct rtentry *, void *)
 		if (error == 0) {
 			KASSERT(retrt == rt);
 			KASSERT((retrt->rt_flags & RTF_UP) == 0);
-			retrt->rt_ifp = NULL;
 			rt_unref(rt);
 			rt_free(retrt);
 		} else if (error == ESRCH) {
@@ -2376,10 +2365,7 @@ db_show_rtentry(struct rtentry *rt, void *w)
 	db_printf(" gw="); db_print_sa(rt->rt_gateway);
 
 	db_printf(" ifp=%p ", rt->rt_ifp);
-	if (rt->rt_ifp)
-		db_printf("(%s)", rt->rt_ifp->if_xname);
-	else
-		db_printf("(NULL)");
+	db_printf("(%s)", rt->rt_ifp->if_xname);
 
 	db_printf(" ifa=%p\n", rt->rt_ifa);
 	db_print_ifa(rt->rt_ifa);

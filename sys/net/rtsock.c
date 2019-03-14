@@ -191,6 +191,7 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	struct rt_walkarg *w = v;
 	int error = 0, size;
 	struct rt_addrinfo info;
+	const struct ifaddr *rtifa;
 
 	if (w->w_op == NET_RT_FLAGS && !(rt->rt_flags & w->w_arg))
 		return 0;
@@ -199,18 +200,15 @@ sysctl_dumpentry(struct rtentry *rt, void *v)
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
 	info.rti_info[RTAX_TAG] = rt_gettag(rt);
-	if (rt->rt_ifp) {
-		const struct ifaddr *rtifa;
-		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
-		/* rtifa used to be simply rt->rt_ifa.  If rt->rt_ifa != NULL,
-		 * then rt_get_ifa() != NULL.  So this ought to still be safe.
-		 * --dyoung
-		 */
-		rtifa = rt_get_ifa(rt);
-		info.rti_info[RTAX_IFA] = rtifa->ifa_addr;
-		if (rt->rt_ifp->if_flags & IFF_POINTOPOINT)
-			info.rti_info[RTAX_BRD] = rtifa->ifa_dstaddr;
-	}
+	info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
+	/* rtifa used to be simply rt->rt_ifa.  If rt->rt_ifa != NULL,
+	 * then rt_get_ifa() != NULL.  So this ought to still be safe.
+	 * --dyoung
+	 */
+	rtifa = rt_get_ifa(rt);
+	info.rti_info[RTAX_IFA] = rtifa->ifa_addr;
+	if (rt->rt_ifp->if_flags & IFF_POINTOPOINT)
+		info.rti_info[RTAX_BRD] = rtifa->ifa_dstaddr;
 	if ((error = rt_msg2(RTM_GET, &info, 0, w, &size)))
 		return error;
 	if (w->w_where && w->w_tmem && w->w_needed <= 0) {

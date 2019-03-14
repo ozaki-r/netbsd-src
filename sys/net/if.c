@@ -2187,9 +2187,10 @@ link_rtrequest(int cmd, struct rtentry *rt, const struct rt_addrinfo *info)
 	struct ifnet *ifp;
 	struct psref psref;
 
-	if (cmd != RTM_ADD || (ifa = rt->rt_ifa) == NULL ||
-	    (ifp = ifa->ifa_ifp) == NULL || (dst = rt_getkey(rt)) == NULL ||
-	    ISSET(info->rti_flags, RTF_DONTCHANGEIFA))
+	ifa = rt->rt_ifa;
+	ifp = ifa->ifa_ifp;
+	dst = rt_getkey(rt);
+	if (cmd != RTM_ADD || ISSET(info->rti_flags, RTF_DONTCHANGEIFA))
 		return;
 	if ((ifa = ifaof_ifpforaddr_psref(dst, ifp, &psref)) != NULL) {
 		rt_replace_ifa(rt, ifa);

@@ -1384,8 +1384,7 @@ ip_forward(struct mbuf *m, int srcrt, struct ifnet *rcvif)
 	    (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
 	    !in_nullhost(satocsin(rt_getkey(rt))->sin_addr) &&
 	    ipsendredirects && !srcrt) {
-		if (rt->rt_ifa &&
-		    (ip->ip_src.s_addr & ifatoia(rt->rt_ifa)->ia_subnetmask) ==
+		if ((ip->ip_src.s_addr & ifatoia(rt->rt_ifa)->ia_subnetmask) ==
 		    ifatoia(rt->rt_ifa)->ia_subnet) {
 			if (rt->rt_flags & RTF_GATEWAY)
 				dest = satosin(rt->rt_gateway)->sin_addr.s_addr;

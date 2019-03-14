@@ -768,7 +768,7 @@ ipsec_mtu(struct mbuf *m, int *destmtu)
 
 			ro = &sav->sah->sa_route;
 			rt = rtcache_validate(ro);
-			if (rt && rt->rt_ifp) {
+			if (rt != NULL) {
 				*destmtu = rt->rt_rmx.rmx_mtu ?
 				    rt->rt_rmx.rmx_mtu : rt->rt_ifp->if_mtu;
 				*destmtu -= ipsechdr;
