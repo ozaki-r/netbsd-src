@@ -15,3 +15,7 @@ SUBDIR=	agr npf
 .include <bsd.kinc.mk>
 
 .PATH: ${NETBSDSRCDIR}/sys/dist/pf/net
+
+.if defined(HAVE_GCC) && ${HAVE_GCC} == 7 && ${ACTIVE_CC} == "gcc"
+COPTS.zlib.c+=	-Wno-error=implicit-fallthrough
+.endif
