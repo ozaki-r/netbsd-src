@@ -2432,7 +2432,7 @@ wg_handle_packet(struct wg_softc *wg, struct mbuf *m, const struct sockaddr *src
 		break;
 	default:
 		WG_LOG_RATECHECK(&wg->wg_ppsratecheck, LOG_DEBUG,
-		    "Unexpected msg type: %u", wgm->wgm_type);
+		    "Unexpected msg type: %u\n", wgm->wgm_type);
 		m_freem(m);
 		break;
 	}
