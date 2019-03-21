@@ -3161,7 +3161,7 @@ wg_clone_destroy(struct ifnet *ifp)
 
 #ifdef WG_RUMPKERNEL
 	if (wg_user_mode(wg)) {
-		rumpcomp_wg_user_destroy(wg->wg_user);
+		rumpuser_wg_destroy(wg->wg_user);
 		wg->wg_user = NULL;
 	}
 #endif
@@ -4126,8 +4126,8 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 			struct in_aliasreq _ifra = *(struct in_aliasreq *)data;
 			struct in_aliasreq *ifra = &_ifra;
 			KASSERT(error == ENOTTY);
-			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
-			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET);
+			strncpy(ifra->ifra_name, rumpuser_wg_get_tunname(wg->wg_user), IFNAMSIZ);
+			error = rumpuser_wg_ioctl(wg->wg_user, cmd, ifra, AF_INET);
 			if (error == 0)
 				error = ENOTTY;
 			break;
@@ -4138,8 +4138,8 @@ wg_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 			struct in6_aliasreq _ifra = *(struct in6_aliasreq *)data;
 			struct in6_aliasreq *ifra = &_ifra;
 			KASSERT(error == ENOTTY);
-			strncpy(ifra->ifra_name, rumpcomp_wg_user_get_tunname(wg->wg_user), IFNAMSIZ);
-			error = rumpcomp_wg_user_ioctl(wg->wg_user, cmd, ifra, AF_INET6);
+			strncpy(ifra->ifra_name, rumpuser_wg_get_tunname(wg->wg_user), IFNAMSIZ);
+			error = rumpuser_wg_ioctl(wg->wg_user, cmd, ifra, AF_INET6);
 			if (error == 0)
 				error = ENOTTY;
 			break;
@@ -4248,7 +4248,7 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 	if (strncmp(tun_name, "tun", 3) != 0)
 		return EINVAL;
 
-	error = rumpcomp_wg_user_create(tun_name, wg, &wg->wg_user);
+	error = rumpuser_wg_create(tun_name, wg, &wg->wg_user);
 
 	return error;
 }
@@ -4267,7 +4267,7 @@ wg_send_user(struct wg_peer *wgp, struct mbuf *m)
 	iov[0].iov_base = mtod(m, void *);
 	iov[0].iov_len = m->m_len;
 
-	error = rumpcomp_wg_user_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
+	error = rumpuser_wg_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
 
 	wg_put_sa(wgp, wgsa, &psref);
 
@@ -4305,7 +4305,7 @@ wg_input_user(struct ifnet *ifp, struct mbuf *m, const int af)
 
 	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
 
-	rumpcomp_wg_user_send(wg->wg_user, iov, 2);
+	rumpuser_wg_send(wg->wg_user, iov, 2);
 }
 
 static int
@@ -4317,14 +4317,14 @@ wg_bind_port_user(struct wg_softc *wg, const uint16_t port)
 	if (port != 0 && old_port == port)
 		return 0;
 
-	error = rumpcomp_wg_user_sock_bind(wg->wg_user, port);
+	error = rumpuser_wg_sock_bind(wg->wg_user, port);
 	if (error == 0)
 		wg->wg_listen_port = port;
 	return error;
 }
 
 void
-rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+rumpkern_wg_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 {
 	struct ifnet *ifp = &wg->wg_if;
 	struct mbuf *m;
@@ -4347,7 +4347,7 @@ rump_wg_user_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 }
 
 void
-rump_wg_user_sock_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+rumpkern_wg_sock_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 {
 	struct mbuf *m;
 	const struct sockaddr *src;

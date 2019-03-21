@@ -171,7 +171,7 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn - iov[0].iov_len;
 
 			rumpuser_component_schedule(NULL);
-			rump_wg_user_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_recv(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
 
@@ -192,7 +192,7 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn;
 
 			rumpuser_component_schedule(NULL);
-			rump_wg_user_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_sock_recv(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
 		if (pfd[3].revents & POLLIN) {
@@ -212,7 +212,7 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn;
 
 			rumpuser_component_schedule(NULL);
-			rump_wg_user_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_sock_recv(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
 	}
@@ -224,7 +224,7 @@ wg_user_rcvthread(void *aaargh)
 }
 
 int
-rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *wg,
+rumpuser_wg_create(const char *tun_name, struct wg_softc *wg,
     struct wg_user **wgup)
 {
 	struct wg_user *wgu = NULL;
@@ -285,7 +285,7 @@ rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *wg,
 }
 
 void
-rumpcomp_wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
+rumpuser_wg_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 {
 	void *cookie = rumpuser_component_unschedule();
 	ssize_t idontcare __attribute__((__unused__));
@@ -306,7 +306,7 @@ rumpcomp_wg_user_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 }
 
 int
-rumpcomp_wg_user_sock_send(struct wg_user *wgu, struct sockaddr *sa,
+rumpuser_wg_sock_send(struct wg_user *wgu, struct sockaddr *sa,
     struct iovec *iov, size_t iovlen)
 {
 	void *cookie = rumpuser_component_unschedule();
@@ -334,7 +334,7 @@ rumpcomp_wg_user_sock_send(struct wg_user *wgu, struct sockaddr *sa,
 }
 
 int
-rumpcomp_wg_user_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
+rumpuser_wg_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
 {
 	void *cookie = rumpuser_component_unschedule();
 	int s, error;
@@ -351,7 +351,7 @@ rumpcomp_wg_user_ioctl(struct wg_user *wgu, u_long cmd, void *data, int af)
 }
 
 int
-rumpcomp_wg_user_sock_bind(struct wg_user *wgu, const uint16_t port)
+rumpuser_wg_sock_bind(struct wg_user *wgu, const uint16_t port)
 {
 	int error;
 	struct sockaddr_in sin;
@@ -381,7 +381,7 @@ rumpcomp_wg_user_sock_bind(struct wg_user *wgu, const uint16_t port)
 }
 
 void
-rumpcomp_wg_user_destroy(struct wg_user *wgu)
+rumpuser_wg_destroy(struct wg_user *wgu)
 {
 	void *cookie = rumpuser_component_unschedule();
 
@@ -405,7 +405,7 @@ rumpcomp_wg_user_destroy(struct wg_user *wgu)
 }
 
 char *
-rumpcomp_wg_user_get_tunname(struct wg_user *wgu)
+rumpuser_wg_get_tunname(struct wg_user *wgu)
 {
 
 	return wgu->wgu_tun_name;

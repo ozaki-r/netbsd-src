@@ -30,18 +30,24 @@
 struct wg_user;
 struct wg_softc;
 
-int	rumpcomp_wg_user_create(const char *tun_name, struct wg_softc *,
+/*
+ * Defined in wg_user.c and called from if_wg.c.
+ */
+int	rumpuser_wg_create(const char *tun_name, struct wg_softc *,
 	    struct wg_user **);
-void	rumpcomp_wg_user_destroy(struct wg_user *);
+void	rumpuser_wg_destroy(struct wg_user *);
 
-void	rumpcomp_wg_user_send(struct wg_user *, struct iovec *, size_t);
-int	rumpcomp_wg_user_sock_send(struct wg_user *, struct sockaddr *,
+void	rumpuser_wg_send(struct wg_user *, struct iovec *, size_t);
+int	rumpuser_wg_sock_send(struct wg_user *, struct sockaddr *,
 	    struct iovec *, size_t);
 
-void	rump_wg_user_recv(struct wg_softc *, struct iovec *, size_t);
-void	rump_wg_user_sock_recv(struct wg_softc *, struct iovec *, size_t);
+int	rumpuser_wg_ioctl(struct wg_user *, u_long, void *, int);
+int	rumpuser_wg_sock_bind(struct wg_user *, const uint16_t);
 
-int	rumpcomp_wg_user_ioctl(struct wg_user *, u_long, void *, int);
-int	rumpcomp_wg_user_sock_bind(struct wg_user *, const uint16_t);
+char *	rumpuser_wg_get_tunname(struct wg_user *);
 
-char *	rumpcomp_wg_user_get_tunname(struct wg_user *);
+/*
+ * Defined in if_wg.c and called from wg_user.c.
+ */
+void	rumpkern_wg_recv(struct wg_softc *, struct iovec *, size_t);
+void	rumpkern_wg_sock_recv(struct wg_softc *, struct iovec *, size_t);
