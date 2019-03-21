@@ -151,6 +151,7 @@ wg_user_rcvthread(void *aaargh)
 		if (pfd[1].revents & POLLIN)
 			continue;
 
+		/* Receive user packets from tun */
 		if (pfd[0].revents & POLLIN) {
 			nn = read(wgu->wgu_fd, wgu->wgu_rcvbuf, sizeof(wgu->wgu_rcvbuf));
 			if (nn == -1 && errno == EAGAIN)
@@ -171,10 +172,11 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn - iov[0].iov_len;
 
 			rumpuser_component_schedule(NULL);
-			rumpkern_wg_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_recv_user(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
 
+		/* Receive wg UDP/IPv4 packets from a peer */
 		if (pfd[2].revents & POLLIN) {
 			struct sockaddr_in sin;
 			socklen_t len = sizeof(sin);
@@ -192,9 +194,11 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn;
 
 			rumpuser_component_schedule(NULL);
-			rumpkern_wg_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_recv_peer(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
+
+		/* Receive wg UDP/IPv6 packets from a peer */
 		if (pfd[3].revents & POLLIN) {
 			struct sockaddr_in6 sin6;
 			socklen_t len = sizeof(sin6);
@@ -212,7 +216,7 @@ wg_user_rcvthread(void *aaargh)
 			iov[1].iov_len = nn;
 
 			rumpuser_component_schedule(NULL);
-			rumpkern_wg_sock_recv(wgu->wgu_sc, iov, 2);
+			rumpkern_wg_recv_peer(wgu->wgu_sc, iov, 2);
 			rumpuser_component_unschedule();
 		}
 	}
@@ -284,8 +288,11 @@ rumpuser_wg_create(const char *tun_name, struct wg_softc *wg,
 	return rumpuser_component_errtrans(rv);
 }
 
+/*
+ * Send decrypted packets to users via a tun.
+ */
 void
-rumpuser_wg_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
+rumpuser_wg_send_user(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 {
 	void *cookie = rumpuser_component_unschedule();
 	ssize_t idontcare __attribute__((__unused__));
@@ -305,8 +312,11 @@ rumpuser_wg_send(struct wg_user *wgu, struct iovec *iov, size_t iovlen)
 	rumpuser_component_schedule(cookie);
 }
 
+/*
+ * Send wg messages to a peer.
+ */
 int
-rumpuser_wg_sock_send(struct wg_user *wgu, struct sockaddr *sa,
+rumpuser_wg_send_peer(struct wg_user *wgu, struct sockaddr *sa,
     struct iovec *iov, size_t iovlen)
 {
 	void *cookie = rumpuser_component_unschedule();

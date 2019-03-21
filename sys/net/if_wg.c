@@ -4267,7 +4267,8 @@ wg_send_user(struct wg_peer *wgp, struct mbuf *m)
 	iov[0].iov_base = mtod(m, void *);
 	iov[0].iov_len = m->m_len;
 
-	error = rumpuser_wg_sock_send(wg->wg_user, wgsatosa(wgsa), iov, 1);
+	/* Send messages to a peer via an ordinary socket. */
+	error = rumpuser_wg_send_peer(wg->wg_user, wgsatosa(wgsa), iov, 1);
 
 	wg_put_sa(wgp, wgsa, &psref);
 
@@ -4305,7 +4306,8 @@ wg_input_user(struct ifnet *ifp, struct mbuf *m, const int af)
 
 	WG_DUMP_BUF(iov[1].iov_base, iov[1].iov_len);
 
-	rumpuser_wg_send(wg->wg_user, iov, 2);
+	/* Send decrypted packets to users via a tun. */
+	rumpuser_wg_send_user(wg->wg_user, iov, 2);
 }
 
 static int
@@ -4323,8 +4325,11 @@ wg_bind_port_user(struct wg_softc *wg, const uint16_t port)
 	return error;
 }
 
+/*
+ * Receive user packets.
+ */
 void
-rumpkern_wg_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+rumpkern_wg_recv_user(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 {
 	struct ifnet *ifp = &wg->wg_if;
 	struct mbuf *m;
@@ -4346,8 +4351,11 @@ rumpkern_wg_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 	(void)wg_output(ifp, m, dst, NULL);
 }
 
+/*
+ * Receive packets from a peer.
+ */
 void
-rumpkern_wg_sock_recv(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
+rumpkern_wg_recv_peer(struct wg_softc *wg, struct iovec *iov, size_t iovlen)
 {
 	struct mbuf *m;
 	const struct sockaddr *src;

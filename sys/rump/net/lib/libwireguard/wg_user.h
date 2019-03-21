@@ -37,8 +37,8 @@ int	rumpuser_wg_create(const char *tun_name, struct wg_softc *,
 	    struct wg_user **);
 void	rumpuser_wg_destroy(struct wg_user *);
 
-void	rumpuser_wg_send(struct wg_user *, struct iovec *, size_t);
-int	rumpuser_wg_sock_send(struct wg_user *, struct sockaddr *,
+void	rumpuser_wg_send_user(struct wg_user *, struct iovec *, size_t);
+int	rumpuser_wg_send_peer(struct wg_user *, struct sockaddr *,
 	    struct iovec *, size_t);
 
 int	rumpuser_wg_ioctl(struct wg_user *, u_long, void *, int);
@@ -49,5 +49,5 @@ char *	rumpuser_wg_get_tunname(struct wg_user *);
 /*
  * Defined in if_wg.c and called from wg_user.c.
  */
-void	rumpkern_wg_recv(struct wg_softc *, struct iovec *, size_t);
-void	rumpkern_wg_sock_recv(struct wg_softc *, struct iovec *, size_t);
+void	rumpkern_wg_recv_user(struct wg_softc *, struct iovec *, size_t);
+void	rumpkern_wg_recv_peer(struct wg_softc *, struct iovec *, size_t);
