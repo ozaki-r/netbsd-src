@@ -581,8 +581,8 @@ static void	wg_clear_states(struct wg_session *);
 static void	wg_get_peer(struct wg_peer *, struct psref *);
 static void	wg_put_peer(struct wg_peer *, struct psref *);
 
-static int	wg_send(struct wg_peer *, struct mbuf *);
-static int	wg_udp_send(struct wg_peer *, struct mbuf *);
+static int	wg_send_so(struct wg_peer *, struct mbuf *);
+static int	wg_send_udp(struct wg_peer *, struct mbuf *);
 static int	wg_output(struct ifnet *, struct mbuf *,
 			   const struct sockaddr *, const struct rtentry *);
 static void	wg_input(struct ifnet *, struct mbuf *, const int);
@@ -595,15 +595,15 @@ static int	wg_clone_destroy(struct ifnet *);
 static void	wg_setup_sysctl(void);
 
 struct wg_ops {
-	int (*send)(struct wg_peer *, struct mbuf *);
-	int (*udp_send)(struct wg_peer *, struct mbuf *);
+	int (*send_hs_msg)(struct wg_peer *, struct mbuf *);
+	int (*send_data_msg)(struct wg_peer *, struct mbuf *);
 	void (*input)(struct ifnet *, struct mbuf *, const int);
 	int (*bind_port)(struct wg_softc *, const uint16_t);
 };
 
 struct wg_ops wg_ops_rumpkernel = {
-	.send		= wg_send,
-	.udp_send	= wg_udp_send,
+	.send_hs_msg	= wg_send_so,
+	.send_data_msg	= wg_send_udp,
 	.input		= wg_input,
 	.bind_port	= wg_bind_port,
 };
@@ -617,8 +617,8 @@ static void	wg_input_user(struct ifnet *, struct mbuf *, const int);
 static int	wg_bind_port_user(struct wg_softc *, const uint16_t);
 
 struct wg_ops wg_ops_rumpuser = {
-	.send		= wg_send_user,
-	.udp_send	= wg_send_user,
+	.send_hs_msg	= wg_send_user,
+	.send_data_msg	= wg_send_user,
 	.input		= wg_input_user,
 	.bind_port	= wg_bind_port_user,
 };
@@ -1433,7 +1433,7 @@ wg_put_sa(struct wg_peer *wgp, struct wg_sockaddr *wgsa, struct psref *psref)
 }
 
 static int
-wg_send(struct wg_peer *wgp, struct mbuf *m)
+wg_send_so(struct wg_peer *wgp, struct mbuf *m)
 {
 	int error;
 	struct socket *so;
@@ -1483,7 +1483,7 @@ wg_send_handshake_msg_init(struct wg_softc *wg, struct wg_peer *wgp)
 
 	wg_fill_msg_init(wg, wgp, wgs, wgmi);
 
-	error = wg->wg_ops->send(wgp, m);
+	error = wg->wg_ops->send_hs_msg(wgp, m);
 	if (error == 0) {
 		WG_TRACE("init msg sent");
 
@@ -1800,7 +1800,7 @@ wg_send_handshake_msg_resp(struct wg_softc *wg, struct wg_peer *wgp,
 	wgmr = mtod(m, struct wg_msg_resp *);
 	wg_fill_msg_resp(wg, wgp, wgmr, wgmi);
 
-	error = wg->wg_ops->send(wgp, m);
+	error = wg->wg_ops->send_hs_msg(wgp, m);
 	if (error == 0)
 		WG_TRACE("resp msg sent");
 	return error;
@@ -1897,7 +1897,7 @@ wg_send_cookie_msg(struct wg_softc *wg, struct wg_peer *wgp,
 	wgmc = mtod(m, struct wg_msg_cookie *);
 	wg_fill_msg_cookie(wg, wgp, wgmc, sender, mac1, src);
 
-	error = wg->wg_ops->send(wgp, m);
+	error = wg->wg_ops->send_hs_msg(wgp, m);
 	if (error == 0)
 		WG_TRACE("cookie msg sent");
 	return error;
@@ -3303,7 +3303,7 @@ error:
 }
 
 static int
-wg_udp_send(struct wg_peer *wgp, struct mbuf *m)
+wg_send_udp(struct wg_peer *wgp, struct mbuf *m)
 {
 	struct psref psref;
 	struct wg_sockaddr *wgsa;
@@ -3400,7 +3400,7 @@ wg_send_data_msg(struct wg_peer *wgp, struct wg_session *wgs,
 	    wgs->wgs_tkey_send, wgmd->wgmd_counter, padded_buf, padded_len,
 	    NULL, 0);
 
-	error = wg->wg_ops->udp_send(wgp, n);
+	error = wg->wg_ops->send_data_msg(wgp, n);
 	if (error == 0) {
 		struct ifnet *ifp = &wg->wg_if;
 		ifp->if_obytes += mlen;
