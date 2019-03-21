@@ -547,13 +547,13 @@ static struct mbuf *
 
 static void	wg_wakeup_worker(struct wg_worker *, int);
 
-static int	wg_send_data_message(struct wg_peer *, struct wg_session *,
+static int	wg_send_data_msg(struct wg_peer *, struct wg_session *,
 		    struct mbuf *);
-static int	wg_send_cookie_message(struct wg_softc *, struct wg_peer *,
+static int	wg_send_cookie_msg(struct wg_softc *, struct wg_peer *,
 		    const uint32_t, const uint8_t [], const struct sockaddr *);
-static int	wg_send_handshake_response_message(struct wg_softc *,
+static int	wg_send_handshake_msg_resp(struct wg_softc *,
 		    struct wg_peer *, const struct wg_msg_init *);
-static void	wg_send_keepalive_message(struct wg_peer *, struct wg_session *);
+static void	wg_send_keepalive_msg(struct wg_peer *, struct wg_session *);
 
 static struct wg_peer *
 		wg_pick_peer_by_sa(struct wg_softc *, const struct sockaddr *,
@@ -1298,13 +1298,13 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 		uint8_t zero[WG_MAC_LEN] = {0};
 		if (memcmp(wgmi->wgmi_mac2, zero, sizeof(zero)) == 0) {
 			WG_TRACE("sending a cookie message: no cookie included");
-			(void)wg_send_cookie_message(wg, wgp, wgmi->wgmi_sender,
+			(void)wg_send_cookie_msg(wg, wgp, wgmi->wgmi_sender,
 			    wgmi->wgmi_mac1, src);
 			goto out;
 		}
 		if (!wgp->wgp_last_sent_cookie_valid) {
 			WG_TRACE("sending a cookie message: no cookie sent ever");
-			(void)wg_send_cookie_message(wg, wgp, wgmi->wgmi_sender,
+			(void)wg_send_cookie_msg(wg, wgp, wgmi->wgmi_sender,
 			    wgmi->wgmi_mac1, src);
 			goto out;
 		}
@@ -1357,7 +1357,7 @@ wg_handle_msg_init(struct wg_softc *wg, const struct wg_msg_init *wgmi,
 
 	wg_update_endpoint_if_necessary(wgp, src);
 
-	(void)wg_send_handshake_response_message(wg, wgp, wgmi);
+	(void)wg_send_handshake_msg_resp(wg, wgp, wgmi);
 
 	wg_calculate_keys(wgs, false);
 	wg_clear_states(wgs);
@@ -1449,7 +1449,7 @@ wg_send(struct wg_peer *wgp, struct mbuf *m)
 }
 
 static int
-wg_send_handshake_initiation_message(struct wg_softc *wg, struct wg_peer *wgp)
+wg_send_handshake_msg_init(struct wg_softc *wg, struct wg_peer *wgp)
 {
 	int error;
 	struct mbuf *m;
@@ -1656,13 +1656,13 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 		uint8_t zero[WG_MAC_LEN] = {0};
 		if (memcmp(wgmr->wgmr_mac2, zero, sizeof(zero)) == 0) {
 			WG_TRACE("sending a cookie message: no cookie included");
-			(void)wg_send_cookie_message(wg, wgp, wgmr->wgmr_sender,
+			(void)wg_send_cookie_msg(wg, wgp, wgmr->wgmr_sender,
 			    wgmr->wgmr_mac1, src);
 			goto out;
 		}
 		if (!wgp->wgp_last_sent_cookie_valid) {
 			WG_TRACE("sending a cookie message: no cookie sent ever");
-			(void)wg_send_cookie_message(wg, wgp, wgmr->wgmr_sender,
+			(void)wg_send_cookie_msg(wg, wgp, wgmr->wgmr_sender,
 			    wgmr->wgmr_mac1, src);
 			goto out;
 		}
@@ -1768,7 +1768,7 @@ wg_handle_msg_resp(struct wg_softc *wg, const struct wg_msg_resp *wgmr,
 	 * XXX if there are pending data packets, we don't need to send
 	 *     a keepalive message.
 	 */
-	wg_send_keepalive_message(wgp, wgs);
+	wg_send_keepalive_msg(wgp, wgs);
 
 	/* Anyway run a softint to flush pending packets */
 	kpreempt_disable();
@@ -1788,7 +1788,7 @@ out:
 }
 
 static int
-wg_send_handshake_response_message(struct wg_softc *wg, struct wg_peer *wgp,
+wg_send_handshake_msg_resp(struct wg_softc *wg, struct wg_peer *wgp,
     const struct wg_msg_init *wgmi)
 {
 	int error;
@@ -1884,7 +1884,7 @@ wg_fill_msg_cookie(struct wg_softc *wg, struct wg_peer *wgp,
 }
 
 static int
-wg_send_cookie_message(struct wg_softc *wg, struct wg_peer *wgp,
+wg_send_cookie_msg(struct wg_softc *wg, struct wg_peer *wgp,
     const uint32_t sender, const uint8_t mac1[WG_MAC_LEN],
     const struct sockaddr *src)
 {
@@ -1992,7 +1992,7 @@ wg_schedule_rekey_timer(struct wg_peer *wgp)
 }
 
 static void
-wg_send_keepalive_message(struct wg_peer *wgp, struct wg_session *wgs)
+wg_send_keepalive_msg(struct wg_peer *wgp, struct wg_session *wgs)
 {
 	struct mbuf *m;
 
@@ -2002,7 +2002,7 @@ wg_send_keepalive_message(struct wg_peer *wgp, struct wg_session *wgs)
 	 *  a zero-length encapsulated encrypted inner-packet."
 	 */
 	m = m_gethdr(M_WAIT, MT_DATA);
-	wg_send_data_message(wgp, wgs, m);
+	wg_send_data_msg(wgp, wgs, m);
 }
 
 static bool
@@ -2518,13 +2518,13 @@ wg_process_peer_tasks(struct wg_softc *wg)
 			wgs = wg_get_stable_session(wgp, &_psref);
 			if (wgs->wgs_state == WGS_STATE_UNKNOWN) {
 				wg_put_session(wgs, &_psref);
-				wg_send_handshake_initiation_message(wg, wgp);
+				wg_send_handshake_msg_init(wg, wgp);
 			} else {
 				wg_put_session(wgs, &_psref);
 				/* rekey */
 				wgs = wg_get_unstable_session(wgp, &_psref);
 				if (wgs->wgs_state != WGS_STATE_INIT_ACTIVE)
-					wg_send_handshake_initiation_message(wg, wgp);
+					wg_send_handshake_msg_init(wg, wgp);
 				wg_put_session(wgs, &_psref);
 			}
 		}
@@ -2548,7 +2548,7 @@ wg_process_peer_tasks(struct wg_softc *wg)
 
 			WG_TRACE("WGP_TASK_SEND_KEEPALIVE_MESSAGE");
 			wgs = wg_get_stable_session(wgp, &_psref);
-			wg_send_keepalive_message(wgp, wgs);
+			wg_send_keepalive_msg(wgp, wgs);
 			wg_put_session(wgs, &_psref);
 		}
 		if (ISSET(tasks, WGP_TASK_DESTROY_PREV_SESSION)) {
@@ -2841,7 +2841,7 @@ wg_peer_softint(void *arg)
 	WG_TRACE("running");
 
 	while ((m = pcq_get(wgp->wgp_q)) != NULL) {
-		wg_send_data_message(wgp, wgs, m);
+		wg_send_data_msg(wgp, wgs, m);
 	}
 out:
 	wg_put_session(wgs, &psref);
@@ -3351,7 +3351,7 @@ wg_get_mbuf(size_t leading_len, size_t len)
 }
 
 static int
-wg_send_data_message(struct wg_peer *wgp, struct wg_session *wgs,
+wg_send_data_msg(struct wg_peer *wgp, struct wg_session *wgs,
     struct mbuf *m)
 {
 	struct wg_softc *wg = wgp->wgp_sc;
