@@ -435,6 +435,8 @@ int	in4_cksum(struct mbuf *, u_int8_t, int, int);
 int	in_localaddr(struct in_addr);
 void	in_socktrim(struct sockaddr_in *);
 
+void	in_len2mask(struct in_addr *, u_int);
+
 void	in_if_link_up(struct ifnet *);
 void	in_if_link_down(struct ifnet *);
 void	in_if_up(struct ifnet *);

@@ -205,6 +205,8 @@ in_pcballoc(struct socket *so, void *v)
 	inp->inp_portalgo = PORTALGO_DEFAULT;
 	inp->inp_bindportonsend = false;
 	inp->inp_prefsrcip.s_addr = INADDR_ANY;
+	inp->inp_overudp_cb = NULL;
+	inp->inp_overudp_arg = NULL;
 #if defined(IPSEC)
 	if (ipsec_enabled) {
 		int error = ipsec_init_pcbpolicy(so, &inp->inp_sp);

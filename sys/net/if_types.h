@@ -267,5 +267,6 @@
 #define IFT_CARP	0xf8		/* Common Address Redundancy Protocol */
 #define IFT_IPSEC	0xf9		/* IPsec I/F */
 #define IFT_MBIM	0xfa		/* Mobile Broadband Interface Model */
+#define IFT_WIREGUARD	0xfb		/* WireGuard */
 
 #endif /* !_NET_IF_TYPES_H_ */
