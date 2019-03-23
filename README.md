@@ -1,56 +1,120 @@
-NetBSD
-------
+# WireGuard for NetBSD
 
-NetBSD is a free, fast, secure, and highly portable Unix-like Open
-Source operating system.  It is available for a [wide range of
-platforms](https://wiki.NetBSD.org/ports/), from large-scale servers
-and powerful desktop systems to handheld and embedded devices.
+There are two implementations: in-kernel one and userspace one.
+Thanks to rump kernels the two implementations share most codes.
 
-Building
---------
+## How to build
 
-You can cross-build NetBSD from most UNIX-like operating systems.
-To build for amd64 (x86_64), in the src directory:
+1. clone the repository and checkout `wireguard` branch,
+2. add the following options to your kernel config, and
+3. build your kenrel, `wgconfig`, `wg-keygen` and `wg-userspace`.
 
-    ./build.sh -U -u -j4 -m amd64 -O ~/obj release
+### kernel options
 
-Additional build information available in the [BUILDING](BUILDING) file.
+    options         LIBSODIUM
+    options         BLAKE2S
+    pseudo-device   wg
 
-Binaries
---------
+## How to use
 
-- [Daily builds](https://nycdn.netbsd.org/pub/NetBSD-daily/HEAD/latest/)
-- [Releases](https://cdn.netbsd.org/pub/NetBSD/)
+### In-kernel implementation
 
-Testing
--------
+1. create and setup a WireGuard interface,
+2. generate a pair of private and pubkey keys by using `wg-keygen`,
+3. configure the interface by using `wgconfig`, and
+4. configure a peer on the interface by using `wgconfig`.
 
-On a running NetBSD system:
+The following intsructions describe a basic usage of the implementation.
 
-    cd /usr/tests; atf-run | atf-report
+    # Create and setup an interface
+    ifconfig wg0 create
+    ifconfig wg0 inet 10.0.0.1/24
+    
+    # Generate a pair of private and pubkey keys
+    wg-keygen > ./privkey
+    cat ./privkey | wg-keygen --pub > ./pubkey
+    
+    # Configure the interface
+    wgconfig wg0 set private-key ./privkey
+    wgconfig wg0 set listen-port 52428
+    
+    # Add a peer
+    wgconfig wg0 add peer peer0 "2iWFzywbDvYu2gQW5Q7/z/g5/Cv4bDDd6L3OKXLOwxs=" --endpoint=192.168,0.2:52428 --allowed-ips=10.0.0.0/24
+    
+    # Try to send packets to the peer
+    ping 10.0.0.2
+    
+    # Delete the peer
+    wgconfig wg0 delete peer peer0
 
-Troubleshooting
----------------
+Note that you can omit `--endpoint=` option if the instance doesn't know
+peer's endpoints in advance, i.e., it acts as a server.  In that case,
+the instance can establish a secure session only if a peer, which acts
+a client, starts handshake of a session to the instance.
 
-- Send bugs and patches [via web form](https://www.netbsd.org/cgi-bin/sendpr.cgi?gndb=netbsd).
-- Subscribe to the [mailing lists](https://www.netbsd.org/mailinglists/).
-  The [netbsd-users](https://netbsd.org/mailinglists/#netbsd-users) list is a good choice for many problems; watch [current-users](https://netbsd.org/mailinglists/#current-users) if you follow the bleeding edge of NetBSD-current.
-- Join the community IRC channel [#netbsd @ freenode](https://webchat.freenode.net/?channels=#netbsd).
+### Userspace implementation
 
-Latest sources
---------------
+1. Create an instance of WireGuard daemon
+2. Setup and use the instance like in-kernel implementation
+3. Destroy the instance
 
-To fetch the main CVS repository:
+The following instructions creates and destroys an instance.
+The first argument is an ID for the instance and it must be a numeric number.
 
-    cvs -d anoncvs@anoncvs.NetBSD.org:/cvsroot checkout -P src
+    # Create an instance
+    wg-userspace 0 create
+    
+    # Destroy the instance
+    wg-userspace 0 destroy
 
-To work in the Git mirror, which is updated every few hours from CVS:
+A WireGuard interface (`wg0`) has been created automatically and you need to
+just configure it by usual tools, `ifconfig` and `wgconfig`, through
+`wg-userspace`.
 
-    git clone https://github.com/NetBSD/src.git
+    # Assign an IP address to the interface
+    wg-userspace 0 ifconfig wg0 inet 10.0.0.1/24
+    wg-userspace 0 wgconfig wg0 set private-key ./privkey
+    wg-userspace 0 wgconfig wg0 set listen-port 52428
+    ...
 
-Additional Links
-----------------
+## CAVEATS
 
-- [The NetBSD Guide](https://www.netbsd.org/docs/guide/en/)
-- [NetBSD manual pages](http://man.netbsd.org/)
-- [NetBSD Cross-Reference](https://nxr.netbsd.org/)
+- The implementation is heavily under development and should not be used it in production systems
+- The `wireguard` branch will be rebased sometimes to track the tip of the NetBSD repository
+
+## For developers
+
+### Debug options
+
+There are four debug options:
+- `WG_DEBUG_LOG` outputs debug logs
+- `WG_DEBUG_TRACE` outputs trace logs
+- `WG_DEBUG_DUMP` outputs hash values, etc.
+- `WG_DEBUG_PARAMS` makes some internal parameters configurable for testing and debugging
+
+You can enable all options at once by `WG_DEBUG`.
+
+### ATF tests
+
+There is a bunch of ATF tests.  Build and install rump libraries and tests, then run:
+
+    cd /usr/tests; atf-run net/wireguard | atf-report
+
+If set `ATF_WIREGUARD_INTEROPERABILITY=yes`, `t_interoperability` tests
+with a peer outside of rump kernels.  Also if set
+`ATF_WIREGUARD_USERSPACE=yes`, it tests the userspace implementation.
+See `tests/net/wireguard/t_interoperability.sh` to know how to set up the peer.
+
+## Tested versions
+
+- NetBSD 8.99.36
+- WireGuard 0.0.20190227
+
+## Links
+
+- [NetBSD](http://www.netbsd.org/)
+- [WireGuard](https://www.wireguard.com)
+
+## Author
+
+- Ryota Ozaki
