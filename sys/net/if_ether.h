@@ -189,6 +189,7 @@ struct ethercom {
 	 */
 	ether_cb_t				ec_ifflags_cb;
 	kmutex_t				*ec_lock;
+	int					ec_flags;
 #ifdef MBUFTRACE
 	struct	mowner ec_rx_mowner;		/* mbufs received */
 	struct	mowner ec_tx_mowner;		/* mbufs transmitted */
@@ -321,6 +322,11 @@ ether_first_multi(struct ether_multistep *step, const struct ethercom *ec)
 
 #define ETHER_LOCK(ec)		mutex_enter((ec)->ec_lock)
 #define ETHER_UNLOCK(ec)	mutex_exit((ec)->ec_lock)
+
+/*
+ * Flags for ec_flags
+ */
+#define ETHER_F_ALLMULTI	IFF_ALLMULTI
 
 /*
  * Ethernet 802.1Q VLAN structures.

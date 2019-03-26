@@ -1470,6 +1470,11 @@ ether_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 		if ((error = ifioctl_common(ifp, cmd, data)) != 0)
 			return error;
 		return ether_ioctl_reinit(ec);
+	case SIOCGIFFLAGS:
+		error = ifioctl_common(ifp, cmd, data);
+		KASSERT(error == 0);
+		ifr->ifr_flags |= ec->ec_flags;
+		return error;
 	case SIOCGETHERCAP:
 		eccr = (struct eccapreq *)data;
 		eccr->eccr_capabilities = ec->ec_capabilities;
