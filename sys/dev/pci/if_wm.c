@@ -3311,6 +3311,7 @@ wm_ifflags_cb(struct ethercom *ec)
 	 * Main usage is to prevent linkdown when opening bpf.
 	 */
 	iffchange = ifp->if_flags ^ sc->sc_if_flags;
+	KASSERT((iffchange & IFF_ALLMULTI) == 0);
 	sc->sc_if_flags = ifp->if_flags;
 	if ((iffchange & ~(IFF_CANTCHANGE | IFF_DEBUG)) != 0) {
 		needreset = true;
@@ -3318,7 +3319,7 @@ wm_ifflags_cb(struct ethercom *ec)
 	}
 
 	/* iff related updates */
-	if ((iffchange & (IFF_PROMISC | IFF_ALLMULTI)) != 0)
+	if ((iffchange & IFF_PROMISC) != 0)
 		wm_set_filter(sc);
 
 	wm_set_vlan(sc);
@@ -3707,6 +3708,9 @@ wm_set_filter(struct wm_softc *sc)
 		sc->sc_rctl |= RCTL_BAM;
 	if (ifp->if_flags & IFF_PROMISC) {
 		sc->sc_rctl |= RCTL_UPE;
+		ETHER_LOCK(ec);
+		ec->ec_flags |= ETHER_F_ALLMULTI;
+		ETHER_UNLOCK(ec);
 		goto allmulti;
 	}
 
@@ -3757,7 +3761,6 @@ wm_set_filter(struct wm_softc *sc)
 	ETHER_FIRST_MULTI(step, ec, enm);
 	while (enm != NULL) {
 		if (memcmp(enm->enm_addrlo, enm->enm_addrhi, ETHER_ADDR_LEN)) {
-			ETHER_UNLOCK(ec);
 			/*
 			 * We must listen to a range of multicast addresses.
 			 * For now, just accept all multicasts, rather than
@@ -3766,6 +3769,8 @@ wm_set_filter(struct wm_softc *sc)
 			 * ranges is for IP multicast routing, for which the
 			 * range is big enough to require all bits set.)
 			 */
+			ec->ec_flags |= ETHER_F_ALLMULTI;
+			ETHER_UNLOCK(ec);
 			goto allmulti;
 		}
 
@@ -3804,13 +3809,12 @@ wm_set_filter(struct wm_softc *sc)
 
 		ETHER_NEXT_MULTI(step, enm);
 	}
+	ec->ec_flags &= ~ETHER_F_ALLMULTI;
 	ETHER_UNLOCK(ec);
 
-	ifp->if_flags &= ~IFF_ALLMULTI;
 	goto setit;
 
  allmulti:
-	ifp->if_flags |= IFF_ALLMULTI;
 	sc->sc_rctl |= RCTL_MPE;
 
  setit:

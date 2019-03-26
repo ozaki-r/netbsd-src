@@ -1357,21 +1357,21 @@ dwc_gmac_setmulti(struct dwc_gmac_softc *sc)
 		goto special_filter;
 	}
 
-	ifp->if_flags &= ~IFF_ALLMULTI;
 	ffilt &= ~(AWIN_GMAC_MAC_FFILT_PM|AWIN_GMAC_MAC_FFILT_PR);
 
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_HTLOW, 0);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_HTHIGH, 0);
 
 	ETHER_LOCK(ec);
+	ec->ec_flags &= ~ETHER_F_ALLMULTI;
 	ETHER_FIRST_MULTI(step, ec, enm);
 	mcnt = 0;
 	while (enm != NULL) {
 		if (memcmp(enm->enm_addrlo, enm->enm_addrhi,
 		    ETHER_ADDR_LEN) != 0) {
-			ETHER_UNLOCK(ec);
 			ffilt |= AWIN_GMAC_MAC_FFILT_PM;
-			ifp->if_flags |= IFF_ALLMULTI;
+			ec->ec_flags |= ETHER_F_ALLMULTI;
+			ETHER_UNLOCK(ec);
 			goto special_filter;
 		}
 
@@ -1395,7 +1395,7 @@ dwc_gmac_setmulti(struct dwc_gmac_softc *sc)
 	    hashes[0]);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_HTHIGH,
 	    hashes[1]);
-	sc->sc_if_flags = sc->sc_ec.ec_if.if_flags;
+	sc->sc_if_flags = ifp->if_flags;
 
 #ifdef DWC_GMAC_DEBUG
 	dwc_gmac_dump_ffilt(sc, ffilt);
