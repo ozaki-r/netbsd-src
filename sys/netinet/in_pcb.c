@@ -779,9 +779,7 @@ in_pcbpurgeif0(struct inpcbtable *table, struct ifnet *ifp)
 		}
 
 		/* IFNET_LOCK must be taken after solock */
-		IFNET_LOCK(ifp);
 		in_purgeifmcast(inp->inp_moptions, ifp);
-		IFNET_UNLOCK(ifp);
 
 		if (need_unlock)
 			inp_unlock(inp);

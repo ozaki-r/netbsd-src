@@ -1197,9 +1197,7 @@ vlan_ether_addmulti(struct ifvlan *ifv, struct ifreq *ifr)
 	mib = ifv->ifv_mib;
 
 	KERNEL_LOCK_UNLESS_IFP_MPSAFE(mib->ifvm_p);
-	IFNET_LOCK(mib->ifvm_p);
 	error = if_mcast_op(mib->ifvm_p, SIOCADDMULTI, sa);
-	IFNET_UNLOCK(mib->ifvm_p);
 	KERNEL_UNLOCK_UNLESS_IFP_MPSAFE(mib->ifvm_p);
 
 	if (error != 0)
@@ -1255,9 +1253,7 @@ vlan_ether_delmulti(struct ifvlan *ifv, struct ifreq *ifr)
 
 	/* We no longer use this multicast address.  Tell parent so. */
 	mib = ifv->ifv_mib;
-	IFNET_LOCK(mib->ifvm_p);
 	error = if_mcast_op(mib->ifvm_p, SIOCDELMULTI, sa);
-	IFNET_UNLOCK(mib->ifvm_p);
 
 	if (error == 0) {
 		/* And forget about this address. */
@@ -1287,10 +1283,8 @@ vlan_ether_purgemulti(struct ifvlan *ifv)
 	}
 
 	while ((mc = LIST_FIRST(&ifv->ifv_mc_listhead)) != NULL) {
-		IFNET_LOCK(mib->ifvm_p);
 		(void)if_mcast_op(mib->ifvm_p, SIOCDELMULTI,
 		    sstocsa(&mc->mc_addr));
-		IFNET_UNLOCK(mib->ifvm_p);
 		LIST_REMOVE(mc, mc_entries);
 		free(mc, M_DEVBUF);
 	}
