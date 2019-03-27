@@ -877,17 +877,13 @@ in6_pcbpurgeif0(struct inpcbtable *table, struct ifnet *ifp)
 			    i6mm_chain, nimm) {
 				if (imm->i6mm_maddr->in6m_ifp == ifp) {
 					LIST_REMOVE(imm, i6mm_chain);
-					IFNET_LOCK(ifp);
 					in6_leavegroup(imm);
-					IFNET_UNLOCK(ifp);
 				}
 			}
 		}
 
 		/* IFNET_LOCK must be taken after solock */
-		IFNET_LOCK(ifp);
 		in_purgeifmcast(in6p->in6p_v4moptions, ifp);
-		IFNET_UNLOCK(ifp);
 
 		if (need_unlock)
 			in6p_unlock(in6p);
