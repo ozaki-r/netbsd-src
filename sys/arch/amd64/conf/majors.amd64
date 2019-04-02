@@ -92,6 +92,8 @@ device-major	dpt		char 96			dpt
 device-major	twe		char 97			twe
 device-major	nsmb		char 98			nsmb
 
+device-major	viop9fs		char 99			viop9fs
+
 #
 # Device majors for Xen. These are assigned here so that:
 # - we are sure there are no conflicts with plain i386

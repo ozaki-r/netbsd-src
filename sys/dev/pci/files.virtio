@@ -23,3 +23,7 @@ device	vioscsi: scsi
 attach	vioscsi at virtio
 file	dev/pci/vioscsi.c	vioscsi
 
+device	viop9fs
+attach	viop9fs at virtio
+file	dev/pci/viop9fs.c	viop9fs
+
