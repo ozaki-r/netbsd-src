@@ -138,7 +138,7 @@ p9pbuf_write(struct puffs_usermount *pu, struct puffs_framebuf *pb,
 		winlen = howmuch;
 		if (puffs_framebuf_getwindow(pb, CUROFF(pb), &win, &winlen)==-1)
 			return errno;
-		n = send(fd, win, winlen, MSG_NOSIGNAL);
+		n = write(fd, win, winlen);
 		switch (n) {
 		case 0:
 			return ECONNRESET;

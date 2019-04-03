@@ -69,6 +69,7 @@ usage(void)
 static int
 serverconnect(const char *addr, unsigned short port)
 {
+#if 0
 	struct sockaddr_in mysin;
 	struct hostent *he;
 	int s;
@@ -92,6 +93,13 @@ serverconnect(const char *addr, unsigned short port)
 		err(1, "connect");
 
 	return s;
+#else
+	int s;
+	s = open("/dev/viop9fs", O_RDWR, 0);
+	if (s == -1)
+		err(1, "open(/dev/viop9fs)");
+	return s;
+#endif
 }
 
 int
