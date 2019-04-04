@@ -117,6 +117,9 @@ p9p_handshake(struct puffs_usermount *pu,
 	p9pbuf_put_4(pb, P9PROTO_NOFID);
 	p9pbuf_put_str(pb, username);
 	p9pbuf_put_str(pb, "");
+#if 1
+	p9pbuf_put_4(pb, strlen(username));
+#endif
 	DO_IO(p9pbuf_write, pu, pb, p9p->servsock, &done, rv);
 
 	puffs_framebuf_recycle(pb);

@@ -106,14 +106,14 @@ gid2gstr(gid_t gid)
 
 #define GETFIELD(a,b,unitsize)						\
 do {									\
-	if (size < unitsize) return EPROTO;				\
+	if (size < unitsize) {printf(#b "\n");return EPROTO;}		\
 	if ((rv = (a(pb, b)))) return rv;				\
 	size -= unitsize;						\
 } while (/*CONSTCOND*/0)
 #define GETSTR(val,strsize)						\
 do {									\
 	if ((rv = p9pbuf_get_str(pb, val, strsize))) return rv;		\
-	if (*strsize > size) return EPROTO;				\
+	if (*strsize > size) {printf(#val "\n");return EPROTO;}		\
 	size -= *strsize;						\
 } while (/*CONSTCOND*/0)
 int
@@ -176,6 +176,13 @@ proto_getstat(struct puffs_framebuf *pb, struct vattr *vap,
 
 	/* muid, not used */
 	GETSTR(NULL, &v16);
+#if 1
+	GETSTR(NULL, &v16); /* extention */
+	uint32_t dummy;
+	GETFIELD(p9pbuf_get_4, &dummy, 4); /* n_uid */
+	GETFIELD(p9pbuf_get_4, &dummy, 4); /* n_uid */
+	GETFIELD(p9pbuf_get_4, &dummy, 4); /* n_muid */
+#endif
 
 	return 0;
 }
@@ -324,6 +331,12 @@ proto_make_stat(struct puffs_framebuf *pb, const struct vattr *vap,
 	p9pbuf_put_str(pb, owner);
 	p9pbuf_put_str(pb, group);
 	p9pbuf_put_str(pb, "");			/* muid		*/
+#if 1
+	p9pbuf_put_str(pb, "");			/* extention	*/
+	p9pbuf_put_4(pb, 0);			/* n_uid */
+	p9pbuf_put_4(pb, 0);			/* n_gid */
+	p9pbuf_put_4(pb, 0);			/* n_muid */
+#endif
 
 	curoff = puffs_framebuf_telloff(pb);
 	puffs_framebuf_seekset(pb, startoff);

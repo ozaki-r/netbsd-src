@@ -426,6 +426,9 @@ nodecreate(struct puffs_usermount *pu, struct puffs_node *pn,
 	p9pbuf_put_str(pb, name);
 	p9pbuf_put_4(pb, dirbit | (vap->va_mode & 0777));
 	p9pbuf_put_1(pb, 0);
+#if 1
+	p9pbuf_put_str(pb, "");
+#endif
 	GETRESPONSE(pb);
 
 	rv = proto_expect_qid(pb, P9PROTO_R_CREATE, &nqid);
