@@ -52,6 +52,15 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #include "ioconf.h"
 
+//#define V9FS_DEBUG	1
+//#define V9FS_DUMP	1
+#ifdef V9FS_DEBUG
+#define DLOG(level, fmt, args...) \
+	do { log(level, "%s: " fmt, __func__, ##args); } while (0)
+#else
+#define DLOG(level, fmt, args...) __nothing
+#endif
+
 /* Configuration registers */
 #define VIRTIO_P9FS_CONFIG_TAG_LEN	0 /* 16bit */
 #define VIRTIO_P9FS_CONFIG_TAG		2
@@ -243,10 +252,10 @@ viop9fs_read(struct file *fp, off_t *offp, struct uio *uio,
 	struct virtqueue *vq = &sc->sc_vq[0];
 	int error, slot, len;
 
-	log(LOG_DEBUG, "%s: enter\n", __func__);
+	DLOG(LOG_DEBUG, "%s: enter\n", __func__);
 
 	if (sc->sc_state == VIOP9FS_S_INIT) {
-		log(LOG_DEBUG, "%s: not requested\n", device_xname(sc->sc_dev));
+		DLOG(LOG_DEBUG, "%s: not requested\n", device_xname(sc->sc_dev));
 		return EAGAIN;
 	}
 
@@ -285,7 +294,7 @@ viop9fs_read(struct file *fp, off_t *offp, struct uio *uio,
 		       device_xname(sc->sc_dev), error);
 		return error;
 	}
-	log(LOG_DEBUG, "%s: len=%d\n", __func__, len);
+	DLOG(LOG_DEBUG, "%s: len=%d\n", __func__, len);
 	sc->sc_buf_rx_len = len;
 	sc->sc_buf_rx_offset = 0;
 	bus_dmamap_sync(virtio_dmat(vsc), sc->sc_dmamap_tx, 0, V9FS_MAX_REQLEN,
@@ -293,15 +302,17 @@ viop9fs_read(struct file *fp, off_t *offp, struct uio *uio,
 	bus_dmamap_sync(virtio_dmat(vsc), sc->sc_dmamap_rx, 0, V9FS_MAX_REQLEN,
 	    BUS_DMASYNC_POSTREAD);
 	virtio_dequeue_commit(vsc, vq, slot);
+#ifdef V9FS_DUMP
 	int i;
 	log(LOG_DEBUG, "%s: buf: ", __func__);
 	for (i = 0; i < len; i++) {
 		log(LOG_DEBUG, "%c", (char)sc->sc_buf_rx[i]);
 	}
 	log(LOG_DEBUG, "\n");
+#endif
 
 consume:
-	log(LOG_DEBUG, "%s: uio_resid=%lu\n", __func__, uio->uio_resid);
+	DLOG(LOG_DEBUG, "%s: uio_resid=%lu\n", __func__, uio->uio_resid);
 	if (len < uio->uio_resid)
 		return EINVAL;
 	len = uio->uio_resid;
@@ -333,10 +344,10 @@ viop9fs_write(struct file *fp, off_t *offp, struct uio *uio,
 	int error, slot;
 	size_t len;
 
-	log(LOG_DEBUG, "%s: enter\n", __func__);
+	DLOG(LOG_DEBUG, "%s: enter\n", __func__);
 
 	if (sc->sc_state != VIOP9FS_S_INIT) {
-		log(LOG_ERR, "%s: already requesting\n", __func__);
+		DLOG(LOG_DEBUG, "%s: already requesting\n", __func__);
 		error = EAGAIN;
 		goto out;
 	}
@@ -356,13 +367,15 @@ viop9fs_write(struct file *fp, off_t *offp, struct uio *uio,
 	if (error != 0)
 		goto out;
 
-	log(LOG_DEBUG, "%s: len=%lu\n", __func__, len);
+	DLOG(LOG_DEBUG, "%s: len=%lu\n", __func__, len);
+#ifdef V9FS_DUMP
 	int i;
 	log(LOG_DEBUG, "%s: buf: ", __func__);
 	for (i = 0; i < len; i++) {
 		log(LOG_DEBUG, "%c", (char)sc->sc_buf_tx[i]);
 	}
 	log(LOG_DEBUG, "\n");
+#endif
 
 	error = virtio_enqueue_prep(vsc, vq, &slot);
 	if (error != 0) {
@@ -370,7 +383,7 @@ viop9fs_write(struct file *fp, off_t *offp, struct uio *uio,
 		       device_xname(sc->sc_dev));
 		goto out;
 	}
-	log(LOG_DEBUG, "%s: slot=%d\n", __func__, slot);
+	DLOG(LOG_DEBUG, "%s: slot=%d\n", __func__, slot);
 	error = virtio_enqueue_reserve(vsc, vq, slot, V9FS_N_SEGMENTS * 2);
 	if (error != 0) {
 		log(LOG_ERR, "%s: virtio_enqueue_reserve failed\n",
@@ -623,7 +636,7 @@ viop9fs_request_done(struct virtqueue *vq)
 	struct virtio_softc *vsc = vq->vq_owner;
 	struct viop9fs_softc *sc = device_private(virtio_child(vsc));
 
-	log(LOG_DEBUG, "%s\n", __func__);
+	DLOG(LOG_DEBUG, "%s\n", __func__);
 
 	mutex_enter(&sc->sc_lock);
 	sc->sc_state = VIOP9FS_S_REPLIED;
