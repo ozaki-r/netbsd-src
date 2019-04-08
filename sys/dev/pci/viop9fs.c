@@ -159,7 +159,7 @@ const struct cdevsw viop9fs_cdevsw = {
 	.d_mmap = nommap,
 	.d_kqfilter = nokqfilter,
 	.d_discard = nodiscard,
-	.d_flag = D_OTHER | D_MPSAFE
+	.d_flag = D_OTHER,
 };
 
 #ifdef _MODULE
@@ -399,9 +399,8 @@ viop9fs_write(struct file *fp, off_t *offp, struct uio *uio,
 	bus_dmamap_sync(virtio_dmat(vsc), sc->sc_dmamap_rx, 0,
 	    V9FS_MAX_REQLEN, BUS_DMASYNC_PREREAD);
 	virtio_enqueue(vsc, vq, slot, sc->sc_dmamap_rx, false);
-	virtio_enqueue_commit(vsc, vq, slot, true);
-
 	sc->sc_state = VIOP9FS_S_REQUESTING;
+	virtio_enqueue_commit(vsc, vq, slot, true);
 out:
 	return error;
 }
@@ -521,7 +520,7 @@ viop9fs_attach(device_t parent, device_t self, void *aux)
 	sc->sc_dev = self;
 	sc->sc_virtio = vsc;
 
-	error = virtio_alloc_vq(vsc, &sc->sc_vq[0], 0, V9FS_MAX_REQLEN, 2,
+	error = virtio_alloc_vq(vsc, &sc->sc_vq[0], 0, V9FS_MAX_REQLEN, V9FS_N_SEGMENTS * 2,
 	    "viop9fs");
 	if (error != 0)
 		goto err_none;
@@ -565,12 +564,12 @@ viop9fs_attach(device_t parent, device_t self, void *aux)
 	}
 
 	sc->sc_state = VIOP9FS_S_INIT;
-	mutex_init(&sc->sc_lock, MUTEX_DEFAULT, IPL_NONE);
+	mutex_init(&sc->sc_lock, MUTEX_DEFAULT, IPL_BIO);
 	cv_init(&sc->sc_wait, "viop9fs");
 
-	virtio_child_attach_start(vsc, self, IPL_VM, sc->sc_vq,
+	virtio_child_attach_start(vsc, self, IPL_BIO, sc->sc_vq,
 	    viop9fs_config_change, virtio_vq_intr,
-	    VIRTIO_F_PCI_INTR_MPSAFE | VIRTIO_F_PCI_INTR_SOFTINT, 0,
+	    0, 0,
 	    VIRTIO_P9FS_FLAG_BITS);
 
 	error = virtio_child_attach_finish(vsc);

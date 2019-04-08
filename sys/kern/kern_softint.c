@@ -183,6 +183,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_softint.c,v 1.45 2017/12/28 03:39:48 msaitoh Ex
 #include <sys/cpu.h>
 #include <sys/xcall.h>
 #include <sys/pserialize.h>
+#include <sys/syslog.h>
 
 #include <net/netisr.h>
 
@@ -592,9 +593,16 @@ softint_execute(softint_t *si, lwp_t *l, int s)
 		(*sh->sh_func)(sh->sh_arg);
 
 		/* Diagnostic: check that spin-locks have not leaked. */
+#if 0
 		KASSERTMSG(curcpu()->ci_mtx_count == 0,
 		    "%s: ci_mtx_count (%d) != 0, sh_func %p\n",
 		    __func__, curcpu()->ci_mtx_count, sh->sh_func);
+#else
+		if (curcpu()->ci_mtx_count != 0) {
+			log(LOG_WARNING, "%s: ci_mtx_count (%d) != 0, sh_func %p\n",
+			    __func__, curcpu()->ci_mtx_count, sh->sh_func);
+		}
+#endif
 
 		(void)splhigh();
 		KASSERT((sh->sh_flags & SOFTINT_ACTIVE) != 0);
