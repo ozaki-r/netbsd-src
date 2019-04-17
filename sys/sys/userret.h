@@ -67,6 +67,7 @@
 
 #include <sys/lockdebug.h>
 #include <sys/intr.h>
+#include <sys/psref.h>
 
 /*
  * Define the MI code needed before returning to user mode, for
@@ -114,6 +115,7 @@ mi_userret(struct lwp *l)
 
 	LOCKDEBUG_BARRIER(NULL, 0);
 	KASSERT(l->l_nopreempt == 0);
+	PSREF_DEBUG_BARRIER();
 	KASSERT(l->l_psrefs == 0);
 }
 

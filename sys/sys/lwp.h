@@ -357,6 +357,7 @@ void	*lwp_getspecific(specificdata_key_t);
 void	*_lwp_getspecific_by_lwp(lwp_t *, specificdata_key_t);
 #endif
 void	lwp_setspecific(specificdata_key_t, void *);
+void	lwp_setspecific_by_lwp(lwp_t *, specificdata_key_t, void *);
 
 /* Syscalls. */
 int	lwp_park(clockid_t, int, struct timespec *, const void *);

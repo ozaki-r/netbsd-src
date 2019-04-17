@@ -604,6 +604,8 @@ softint_execute(softint_t *si, lwp_t *l, int s)
 		sh->sh_flags ^= SOFTINT_ACTIVE;
 	}
 
+	PSREF_DEBUG_BARRIER();
+
 	if (havelock) {
 		KERNEL_UNLOCK_ONE(l);
 	}

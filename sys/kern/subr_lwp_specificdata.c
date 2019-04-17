@@ -129,3 +129,11 @@ lwp_setspecific(specificdata_key_t key, void *data)
 	specificdata_setspecific(lwp_specificdata_domain,
 				 &curlwp->l_specdataref, key, data);
 }
+
+void
+lwp_setspecific_by_lwp(struct lwp *l, specificdata_key_t key, void *data)
+{
+
+	specificdata_setspecific(lwp_specificdata_domain,
+				 &l->l_specdataref, key, data);
+}

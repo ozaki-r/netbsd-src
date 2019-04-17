@@ -315,6 +315,7 @@ defparam opt_kgdb.h		KGDB_DEV KGDB_DEVNAME KGDB_DEVPORT
 defflag				LOCKDEBUG
 defflag				SYSCALL_DEBUG
 defflag	opt_kstack.h		KSTACK_CHECK_MAGIC
+defflag				PSREF_DEBUG
 
 # memory (ram) disk options
 #

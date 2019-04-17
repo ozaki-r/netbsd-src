@@ -105,6 +105,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_exit.c,v 1.274 2019/03/01 09:02:03 hannken Exp 
 #include <sys/lwpctl.h>
 #include <sys/atomic.h>
 #include <sys/sdt.h>
+#include <sys/psref.h>
 
 #include <uvm/uvm_extern.h>
 

@@ -1863,6 +1863,7 @@ void
 ifa_acquire(struct ifaddr *ifa, struct psref *psref)
 {
 
+	PSREF_DEBUG_FILL_RETURN_ADDRESS(psref);
 	psref_acquire(psref, &ifa->ifa_psref, ifa_psref_class);
 }
 
@@ -2739,6 +2740,7 @@ if_get(const char *name, struct psref *psref)
 		if (if_is_deactivated(ifp))
 			continue;
 		if (strcmp(ifp->if_xname, name) == 0) {
+			PSREF_DEBUG_FILL_RETURN_ADDRESS(psref);
 			psref_acquire(psref, &ifp->if_psref,
 			    ifnet_psref_class);
 			goto out;
@@ -2802,8 +2804,10 @@ if_get_byindex(u_int idx, struct psref *psref)
 
 	s = pserialize_read_enter();
 	ifp = if_byindex(idx);
-	if (__predict_true(ifp != NULL))
+	if (__predict_true(ifp != NULL)) {
+		PSREF_DEBUG_FILL_RETURN_ADDRESS(psref);
 		psref_acquire(psref, &ifp->if_psref, ifnet_psref_class);
+	}
 	pserialize_read_exit(s);
 
 	return ifp;

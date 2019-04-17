@@ -36,6 +36,7 @@ __KERNEL_RCSID(0, "$NetBSD: sysproxy.c,v 1.6 2019/04/19 01:52:55 ozaki-r Exp $")
 #include <sys/systm.h>
 #include <sys/xcall.h>
 #include <sys/lockdebug.h>
+#include <sys/psref.h>
 
 #define _RUMP_SYSPROXY
 #include <rump/rumpuser.h>
@@ -77,6 +78,7 @@ hyp_syscall(int num, void *arg, long *retval)
 	/* Sanity checks (from mi_userret) */
 	LOCKDEBUG_BARRIER(NULL, 0);
 	KASSERT(l->l_nopreempt == 0);
+	PSREF_DEBUG_BARRIER();
 	KASSERT(l->l_psrefs == 0);
 
 	return rv;

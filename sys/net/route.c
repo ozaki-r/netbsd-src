@@ -2077,6 +2077,8 @@ rtcache_ref(struct rtentry *rt, struct route *ro)
 #ifdef NET_MPSAFE
 	RTCACHE_PSREF_TRACE(rt, ro);
 	ro->ro_bound = curlwp_bind();
+	/* XXX Use a real caller's address */
+	PSREF_DEBUG_FILL_RETURN_ADDRESS(&ro->ro_psref);
 	psref_acquire(&ro->ro_psref, &rt->rt_psref, rt_psref_class);
 #endif
 }

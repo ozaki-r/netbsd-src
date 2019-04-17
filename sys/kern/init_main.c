@@ -195,6 +195,7 @@ extern void *_binary_splash_image_end;
 #include <sys/kauth.h>
 #include <net80211/ieee80211_netbsd.h>
 #include <sys/cprng.h>
+#include <sys/psref.h>
 
 #include <sys/syscall.h>
 #include <sys/syscallargs.h>
@@ -392,6 +393,9 @@ main(void)
 	/* Initialize process and pgrp structures. */
 	procinit();
 	lwpinit();
+
+	/* Must be called after lwpinit (lwpinit_specificdata) */
+	psref_init();
 
 	/* Initialize signal-related data structures. */
 	signal_init();
