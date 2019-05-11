@@ -1332,6 +1332,8 @@
 ./usr/libdata/debug/usr/sbin/vnconfig.debug	comp-sysutil-debug	debug
 ./usr/libdata/debug/usr/sbin/wake.debug		comp-obsolete		obsolete,compatfile
 ./usr/libdata/debug/usr/sbin/wakeonlan.debug	comp-netutil-debug	debug
+./usr/libdata/debug/usr/sbin/wg-keygen.debug	comp-netutil-debug	debug
+./usr/libdata/debug/usr/sbin/wgconfig.debug	comp-netutil-debug	debug
 ./usr/libdata/debug/usr/sbin/wiconfig.debug	comp-sysutil-debug	debug
 ./usr/libdata/debug/usr/sbin/wire-test.debug	comp-netutil-debug	debug
 ./usr/libdata/debug/usr/sbin/wlanctl.debug	comp-sysutil-debug	debug
