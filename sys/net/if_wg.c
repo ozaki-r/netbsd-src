@@ -3147,7 +3147,7 @@ wg_if_attach(struct wg_softc *wg)
 
 	wg->wg_if.if_addrlen = 0;
 	wg->wg_if.if_mtu = WG_MTU;
-	wg->wg_if.if_flags = IFF_POINTOPOINT;
+	wg->wg_if.if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
 	wg->wg_if.if_extflags = IFEF_NO_LINK_STATE_CHANGE;
 	wg->wg_if.if_extflags |= IFEF_MPSAFE;
 	wg->wg_if.if_ioctl = wg_ioctl;
