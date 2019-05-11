@@ -30,7 +30,7 @@ SUBDIR=	ac accton acpitools altq apm apmd arp autofs \
 	tadpolectl tcpdchk tcpdmatch tcpdrop timed tpctl tprof traceroute trpt \
 	unlink usbdevs user \
 	videomode vipw veriexecgen vnconfig \
-	wakeonlan wg-keygen wgconfig wiconfig wlanctl wsconscfg wsfontload wsmoused \
+	wakeonlan wg-keygen wg-userspace wgconfig wiconfig wlanctl wsconscfg wsfontload wsmoused \
 	wsmuxctl zdump zic
 
 .if ${MKMAKEMANDB} != "no"
