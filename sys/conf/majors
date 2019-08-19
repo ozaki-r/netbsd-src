@@ -87,3 +87,4 @@ device-major spi       char 347		   spi
 # Major 353 is reserved for external/cddl/osnet/dev/sdt/sdt.c
 device-major ipmi      char 354		   ipmi
 device-major vhci      char 355            vhci
+device-major vio9p     char 356		   vio9p

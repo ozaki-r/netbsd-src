@@ -458,6 +458,7 @@ SUBDIR+=	ld_nvme
 SUBDIR+=	nvme
 SUBDIR+=	twa
 SUBDIR+=	twe
+SUBDIR+=	vio9p
 SUBDIR+=	viomb
 SUBDIR+=	virtio
 SUBDIR+=	virtio_pci

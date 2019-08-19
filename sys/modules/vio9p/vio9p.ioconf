@@ -1,0 +1,10 @@
+#       $NetBSD$
+
+ioconf vio9p
+
+include "conf/files"
+include "dev/pci/files.pci"
+
+pseudo-root virtio*
+
+vio9p* at virtio?
