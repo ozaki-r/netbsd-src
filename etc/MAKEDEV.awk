@@ -305,7 +305,7 @@ BEGIN {
 		# or block device definition remains within the entry,
 		# print it to output, otherwise scrap it.
 		parsed = ""
-		while (match(deventry, /%[a-z]*_(blk|chr)%/)) {
+		while (match(deventry, /%[a-z0-9]*_(blk|chr)%/)) {
 			nam = substr(deventry, RSTART + 1, RLENGTH - 6);
 			typ = substr(deventry, RSTART + RLENGTH - 4, 3);
 			if (typ == "blk") {
