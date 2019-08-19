@@ -105,6 +105,9 @@ struct puffs9p {
 	size_t maxreq;		/* negotiated with server */
 
 	int protover;
+	int server;
+#define P9P_SERVER_TCP		0
+#define P9P_SERVER_CDEV		1
 };
 
 struct dirfid {
