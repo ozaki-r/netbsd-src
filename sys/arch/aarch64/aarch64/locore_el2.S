@@ -56,6 +56,50 @@ drop_to_el1:
 	b.eq	1f
 	ret
 1:
+	/* Check if VHE is present */
+	mrs	x2, id_aa64mmfr1_el1
+	and	x2, x2, ID_AA64MMFR1_EL1_VH
+	cmp	x2, ID_AA64MMFR1_EL1_VH
+	b.ne	no_vhe
+
+/*
+ * VHE is present.  Try to run the kernel in EL2.
+ */
+	/* Enable VHE */
+	mov	x2, #(HCR_TGE)
+	orr	x2, x2, #(HCR_E2H)
+	msr	hcr_el2, x2
+
+	/* Load the Virtualization Process ID Register */
+	mrs	x2, midr_el1
+	msr	vpidr_el2, x2
+
+	/* Load the Virtualization Multiprocess ID Register */
+	mrs	x2, mpidr_el1
+	msr	vmpidr_el2, x2
+
+	/* Reset SCTLR */
+	msr	sctlr_el1, xzr
+
+	/* Reset CPTR */
+	msr	cptr_el2, xzr
+
+	/* Set the counter offset to a known value */
+	msr	cntvoff_el2, xzr
+
+	/* Hypervisor trap functions */
+	adr	x2, hyp_vectors // FIXME
+	msr	vbar_el2, x2
+
+	mov	x2, #(SPSR_M_EL2H)
+	msr	spsr_el2, x2
+
+	ret
+
+/*
+ * VHE is not present.  Run the kernel in EL1.
+ */
+no_vhe:
 	/* Configure the Hypervisor */
 	mov	x2, #(HCR_RW)
 	msr	hcr_el2, x2
