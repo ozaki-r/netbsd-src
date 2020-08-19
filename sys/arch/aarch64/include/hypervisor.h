@@ -81,6 +81,33 @@
 #define	HCR_RW		__BIT(31)
 #define	HCR_CD		__BIT(32)
 #define	HCR_ID		__BIT(33)
+#define	HCR_E2H		__BIT(34)
+#define	HCR_TLOR	__BIT(35)
+#define	HCR_TERR	__BIT(36)
+#define	HCR_TEA		__BIT(37)
+#define	HCR_MIOCNCE	__BIT(38)
+/*     	RES0		__BIT(39) */
+#define	HCR_APK		__BIT(40)
+#define	HCR_API		__BIT(41)
+#define	HCR_NV		__BIT(42)
+#define	HCR_NV1		__BIT(43)
+#define	HCR_AT		__BIT(44)
+#define	HCR_NV2		__BIT(45)
+#define	HCR_FWB		__BIT(46)
+#define	HCR_FIEN	__BIT(47)
+/*     	RES0		__BIT(48) */
+#define	HCR_TID4	__BIT(49)
+#define	HCR_TICAB	__BIT(50)
+#define	HCR_AMVOFFEN	__BIT(51)
+#define	HCR_TOCU	__BIT(52)
+#define	HCR_EnSCXT	__BIT(53)
+#define	HCR_TTLBIS	__BIT(54)
+#define	HCR_TTLBOS	__BIT(55)
+#define	HCR_ATA		__BIT(56)
+#define	HCR_DCT		__BIT(57)
+#define	HCR_TID5	__BIT(58)
+#define	HCR_TWEDEn	__BIT(59)
+#define	HCR_TWEDEL_MASK	__BITS(63,60)
 
 #endif
 
