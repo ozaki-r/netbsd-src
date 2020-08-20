@@ -57,10 +57,10 @@ drop_to_el1:
 	ret
 1:
 	/* Check if VHE is present */
-	mrs	x2, id_aa64mmfr1_el1
-	and	x2, x2, ID_AA64MMFR1_EL1_VH
-	cmp	x2, ID_AA64MMFR1_EL1_VH
-	b.ne	no_vhe
+	//mrs	x2, id_aa64mmfr1_el1
+	//and	x2, x2, ID_AA64MMFR1_EL1_VH
+	//cmp	x2, ID_AA64MMFR1_EL1_VH
+	//b.ne	no_vhe
 
 /*
  * VHE is present.  Try to run the kernel in EL2.
