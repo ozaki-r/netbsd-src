@@ -2758,11 +2758,8 @@ pf_socket_lookup(int direction, struct pf_pdesc *pd)
 	struct inpcbtable	*tb;
 	struct inpcb		*inp = NULL;
 	struct socket		*so = NULL;
-#if defined(__NetBSD__) && defined(INET6)
-	struct in6pcb		*in6p = NULL;
-#else
 #define in6p inp
-#endif /* __NetBSD__ && INET6 */
+#define in6p_socket inp_socket
 
 	if (pd == NULL)
 		return (-1);

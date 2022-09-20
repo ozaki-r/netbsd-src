@@ -3266,12 +3266,7 @@ wg_socreate(struct wg_softc *wg, int af, struct socket **sop)
 	so->so_upcallarg = wg;
 	so->so_upcall = wg_so_upcall;
 	so->so_rcv.sb_flags |= SB_UPCALL;
-	if (af == AF_INET)
-		in_pcb_register_overudp_cb(sotoinpcb(so), wg_overudp_cb, wg);
-#if INET6
-	else
-		in6_pcb_register_overudp_cb(sotoin6pcb(so), wg_overudp_cb, wg);
-#endif
+	in_pcb_register_overudp_cb(sotoinpcb(so), wg_overudp_cb, wg);
 	sounlock(so);
 
 	*sop = so;
@@ -3924,7 +3919,7 @@ wg_send_udp(struct wg_peer *wgp, struct mbuf *m)
 		error = udp_send(so, m, wgsatosa(wgsa), NULL, curlwp);
 	} else {
 #ifdef INET6
-		error = udp6_output(sotoin6pcb(so), m, wgsatosin6(wgsa),
+		error = udp6_output(sotoinpcb(so), m, wgsatosin6(wgsa),
 		    NULL, curlwp);
 #else
 		m_freem(m);
