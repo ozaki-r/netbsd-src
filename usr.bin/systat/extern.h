@@ -67,15 +67,11 @@ extern double	etime;
 extern bool 	showzero;
 
 struct inpcb;
-#ifdef INET6
-struct in6pcb;
-#endif
 
 int	 checkhost(struct inpcb *);
 int	 checkport(struct inpcb *);
 #ifdef INET6
-int	 checkhost6(struct in6pcb *);
-int	 checkport6(struct in6pcb *);
+int	 checkhost6(struct inpcb *);
 #endif
 void	 closebufcache(WINDOW *);
 void	 closedf(WINDOW *);

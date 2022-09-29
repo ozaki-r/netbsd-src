@@ -47,7 +47,6 @@ __RCSID("$NetBSD: sockstat.c,v 1.24 2021/08/27 18:09:30 rillig Exp $");
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <netinet/in_pcb.h>
-#include <netinet/in_pcb_hdr.h>
 #include <netinet/tcp_fsm.h>
 
 #define _KMEMUSER
