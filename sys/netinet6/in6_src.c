@@ -811,8 +811,8 @@ out:
 int
 in6_selecthlim(struct inpcb *inp, struct ifnet *ifp)
 {
-	if (inp && inp->inp_hops6 >= 0)
-		return (inp->inp_hops6);
+	if (inp && in6p_hops6(inp) >= 0)
+		return in6p_hops6(inp);
 	else if (ifp)
 		return (ND_IFINFO(ifp)->chlim);
 	else

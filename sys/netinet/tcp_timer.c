@@ -330,7 +330,7 @@ tcp_timer_rexmt(void *arg)
 		icmp.icmp_nextmtu = tp->t_pmtud_nextmtu;
 		icmp.icmp_ip.ip_len = tp->t_pmtud_ip_len;
 		icmp.icmp_ip.ip_hl = tp->t_pmtud_ip_hl;
-		icmpsrc.sin_addr = tp->t_inpcb->inp_faddr;
+		icmpsrc.sin_addr = in4p_faddr(tp->t_inpcb);
 		icmp_mtudisc(&icmp, icmpsrc.sin_addr);
 
 		/*

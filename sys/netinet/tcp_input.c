@@ -1453,7 +1453,7 @@ findpcb:
 	so = NULL;
 	if (inp) {
 		/* Check the minimum TTL for socket. */
-		if (inp->inp_af == AF_INET && ip->ip_ttl < inp->inp_ip_minttl)
+		if (inp->inp_af == AF_INET && ip->ip_ttl < in4p_ip_minttl(inp))
 			goto drop;
 
 		tp = intotcpcb(inp);
@@ -1481,7 +1481,7 @@ findpcb:
 
 #ifdef INET6
 	/* save packet options if user wanted */
-	if (inp && (inp->inp_flags & IN6P_CONTROLOPTS)) {
+	if (inp->inp_af == AF_INET6 && (inp->inp_flags & IN6P_CONTROLOPTS)) {
 		if (inp->inp_options) {
 			m_freem(inp->inp_options);
 			inp->inp_options = NULL;
@@ -2088,10 +2088,10 @@ after_listen:
 			tp->snd_cwnd = tp->t_peermss;
 		else {
 			int ss = tcp_init_win;
-			if (inp->inp_af == AF_INET && in_localaddr(inp->inp_faddr))
+			if (inp->inp_af == AF_INET && in_localaddr(in4p_faddr(inp)))
 				ss = tcp_init_win_local;
 #ifdef INET6
-			else if (inp->inp_af == AF_INET6 && in6_localaddr(&inp->inp_faddr6))
+			else if (inp->inp_af == AF_INET6 && in6_localaddr(&in6p_faddr(inp)))
 				ss = tcp_init_win_local;
 #endif
 			tp->snd_cwnd = TCP_INITIAL_WINDOW(ss, tp->t_peermss);
