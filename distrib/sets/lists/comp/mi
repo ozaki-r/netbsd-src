@@ -2706,7 +2706,7 @@
 ./usr/include/netinet/in_l2tp.h			comp-c-include
 ./usr/include/netinet/in_offload.h		comp-c-include
 ./usr/include/netinet/in_pcb.h			comp-c-include
-./usr/include/netinet/in_pcb_hdr.h		comp-c-include
+./usr/include/netinet/in_pcb_hdr.h		comp-obsolete		obsolete
 ./usr/include/netinet/in_route.h		comp-obsolete		obsolete
 ./usr/include/netinet/in_selsrc.h		comp-c-include
 ./usr/include/netinet/in_systm.h		comp-c-include

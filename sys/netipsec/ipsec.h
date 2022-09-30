@@ -45,7 +45,6 @@
 #include <sys/socketvar.h>
 #include <sys/localcount.h>
 
-#include <netinet/in_pcb_hdr.h>
 #include <netinet/in_pcb.h>
 #include <netipsec/keydb.h>
 
