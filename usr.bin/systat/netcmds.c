@@ -331,8 +331,8 @@ checkhost(struct inpcb *inp)
 			if (((struct sockaddr *)&p->addr)->sa_family != AF_INET)
 				continue;
 			s_in = (struct sockaddr_in *)&p->addr;
-			if (s_in->sin_addr.s_addr == inp->inp_laddr.s_addr ||
-			    s_in->sin_addr.s_addr == inp->inp_faddr.s_addr)
+			if (s_in->sin_addr.s_addr == in4p_laddr(inp).s_addr ||
+			    s_in->sin_addr.s_addr == in4p_faddr(inp).s_addr)
 				return (p->onoff);
 		}
 	return (1);
@@ -350,8 +350,8 @@ checkhost6(struct inpcb *inp)
 			if (((struct sockaddr *)&p->addr)->sa_family != AF_INET6)
 				continue;
 			sin6 = (struct sockaddr_in6 *)&p->addr;
-			if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr, &inp->inp_laddr6) ||
-			    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr, &inp->inp_faddr6))
+			if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr, &in6p_laddr(inp)) ||
+			    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr, &in6p_faddr(inp)))
 				return (p->onoff);
 		}
 	return (1);

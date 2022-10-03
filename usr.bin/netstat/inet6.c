@@ -141,7 +141,7 @@ extern const char * const tcptimers[];
 
 #ifdef INET6
 
-struct	inpcb inpcb;
+struct	in6pcb in6pcb;
 #ifdef TCP6
 struct	tcp6cb tcp6cb;
 #else
@@ -288,6 +288,7 @@ getpcblist_kmem(u_long off, const char *name, size_t *len)
 	struct socket sockb;
 	struct inpcbtable table;
 	struct inpcb *next, *prev;
+	struct inpcb *inp;
 	int istcp = strcmp(name, "tcp6") == 0;
 	struct kinfo_pcb *pcblist;
 	size_t size = 100, i;
@@ -309,33 +310,34 @@ getpcblist_kmem(u_long off, const char *name, size_t *len)
 
 	i = 0;
 	while (next != TAILQ_END(head)) {
-		kread((u_long)next, (char *)&inpcb, sizeof inpcb);
-		next = TAILQ_NEXT(&inpcb, inp_queue);
+		kread((u_long)next, (char *)&in6pcb, sizeof in6pcb);
+		inp = (struct inpcb *)&in6pcb;
+		next = TAILQ_NEXT(inp, inp_queue);
 		prev = next;
 
-		if (inpcb.inp_af != AF_INET6)
+		if (inp->inp_af != AF_INET6)
 			continue;
 
-		kread((u_long)inpcb.inp_socket, (char *)&sockb,
+		kread((u_long)inp->inp_socket, (char *)&sockb,
 		    sizeof (sockb));
 		if (istcp) {
 #ifdef TCP6
-			kread((u_long)inpcb.inp_ppcb,
+			kread((u_long)inp->inp_ppcb,
 			    (char *)&tcp6cb, sizeof (tcp6cb));
 #else
-			kread((u_long)inpcb.inp_ppcb,
+			kread((u_long)inp->inp_ppcb,
 			    (char *)&tcpcb, sizeof (tcpcb));
 #endif
 		}
 		pcblist[i].ki_ppcbaddr =
-		    istcp ? (uintptr_t) inpcb.inp_ppcb : (uintptr_t) prev;
+		    istcp ? (uintptr_t) inp->inp_ppcb : (uintptr_t) prev;
 		pcblist[i].ki_rcvq = (uint64_t)sockb.so_rcv.sb_cc;
 		pcblist[i].ki_sndq = (uint64_t)sockb.so_snd.sb_cc;
-		sin6.sin6_addr = inpcb.inp_laddr6;
-		sin6.sin6_port = inpcb.inp_lport;
+		sin6.sin6_addr = in6p_laddr(inp);
+		sin6.sin6_port = inp->inp_lport;
 		memcpy(&pcblist[i].ki_s, &sin6, sizeof(sin6));
-		sin6.sin6_addr = inpcb.inp_faddr6;
-		sin6.sin6_port = inpcb.inp_fport;
+		sin6.sin6_addr = in6p_faddr(inp);
+		sin6.sin6_port = inp->inp_fport;
 		memcpy(&pcblist[i].ki_d, &sin6, sizeof(sin6));
 		pcblist[i].ki_tstate = tcpcb.t_state;
 		if (i++ == size) {

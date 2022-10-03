@@ -1061,7 +1061,8 @@ socktrans(struct file *f, struct socket *sock, int i)
 	struct socket	so;
 	struct protosw	proto;
 	struct domain	dom;
-	struct inpcb	inpcb;
+	struct in4pcb	in4pcb;
+	struct in6pcb	in6pcb;
 	struct unpcb	unpcb;
 	struct ddpcb	ddpcb;
 	int len;
@@ -1123,15 +1124,16 @@ socktrans(struct file *f, struct socket *sock, int i)
 		case IPPROTO_TCP:
 			if (so.so_pcb == NULL)
 				break;
-			if (kvm_read(kd, (u_long)so.so_pcb, (char *)&inpcb,
-			    sizeof(inpcb)) != sizeof(inpcb)) {
-				dprintf("can't read inpcb at %p", so.so_pcb);
+			if (kvm_read(kd, (u_long)so.so_pcb, (char *)&in4pcb,
+			    sizeof(in4pcb)) != sizeof(in4pcb)) {
+				dprintf("can't read in4pcb at %p", so.so_pcb);
 				goto bad;
 			}
-			inet_addrstr(lbuf, sizeof(lbuf), &inpcb.inp_laddr,
-			    ntohs(inpcb.inp_lport), isdgram);
-			inet_addrstr(fbuf, sizeof(fbuf), &inpcb.inp_faddr,
-			    ntohs(inpcb.inp_fport), isdgram);
+			struct inpcb *inp = (struct inpcb *)&in4pcb;
+			inet_addrstr(lbuf, sizeof(lbuf), &in4p_laddr(inp),
+			    ntohs(inp->inp_lport), isdgram);
+			inet_addrstr(fbuf, sizeof(fbuf), &in4p_faddr(inp),
+			    ntohs(inp->inp_fport), isdgram);
 			break;
 		default:
 			break;
@@ -1147,15 +1149,16 @@ socktrans(struct file *f, struct socket *sock, int i)
 		case IPPROTO_TCP:
 			if (so.so_pcb == NULL)
 				break;
-			if (kvm_read(kd, (u_long)so.so_pcb, (char *)&inpcb,
-			    sizeof(inpcb)) != sizeof(inpcb)) {
-				dprintf("can't read inpcb at %p", so.so_pcb);
+			if (kvm_read(kd, (u_long)so.so_pcb, (char *)&in6pcb,
+			    sizeof(in6pcb)) != sizeof(in6pcb)) {
+				dprintf("can't read in6pcb at %p", so.so_pcb);
 				goto bad;
 			}
-			inet6_addrstr(lbuf, sizeof(lbuf), &inpcb.inp_laddr6,
-			    ntohs(inpcb.inp_lport), isdgram);
-			inet6_addrstr(fbuf, sizeof(fbuf), &inpcb.inp_faddr6,
-			    ntohs(inpcb.inp_fport), isdgram);
+			struct inpcb *inp = (struct inpcb *)&in6pcb;
+			inet6_addrstr(lbuf, sizeof(lbuf), &in6p_laddr(inp),
+			    ntohs(inp->inp_lport), isdgram);
+			inet6_addrstr(fbuf, sizeof(fbuf), &in6p_faddr(inp),
+			    ntohs(inp->inp_fport), isdgram);
 			break;
 		default:
 			break;
