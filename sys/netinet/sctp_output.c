@@ -2137,11 +2137,11 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 		if (stcb) {
 			if ((stcb->asoc.ecn_allowed) && ecn_ok) {
 				/* Enable ECN */
-				ip->ip_tos = (u_char)((inp->ip_inp.inp.inp_ip.ip_tos & 0x000000fc) |
+				ip->ip_tos = (u_char)((in4p_ip(&inp->ip_inp.inp).ip_tos & 0x000000fc) |
 						      sctp_get_ect(stcb, chk));
 			} else {
 				/* No ECN */
-				ip->ip_tos = inp->ip_inp.inp.inp_ip.ip_tos;
+				ip->ip_tos = in4p_ip(&inp->ip_inp.inp).ip_tos;
 			}
 		} else {
 			/* no association at all */
@@ -2299,10 +2299,10 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 		 * We assume here that inp_flow is in host byte order within
 		 * the TCB!
 		 */
-		flowBottom = ((struct in6pcb *)inp)->in6p_flowinfo & 0x0000ffff;
-		flowTop = ((((struct in6pcb *)inp)->in6p_flowinfo & 0x000f0000) >> 16);
+		flowBottom = in6p_flowinfo(inp) & 0x0000ffff;
+		flowTop = ((in6p_flowinfo(inp) & 0x000f0000) >> 16);
 
-		tosTop = (((((struct in6pcb *)inp)->in6p_flowinfo & 0xf0) >> 4) | IPV6_VERSION);
+		tosTop = (((in6p_flowinfo(inp) & 0xf0) >> 4) | IPV6_VERSION);
 
 		/* protect *sin6 from overwrite */
 		memcpy(&tmp, to, sizeof(struct sockaddr_in6));
@@ -2331,14 +2331,14 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 		if (stcb != NULL) {
 			if ((stcb->asoc.ecn_allowed) && ecn_ok) {
 				/* Enable ECN */
-				tosBottom = (((((struct in6pcb *)inp)->in6p_flowinfo & 0x0c) | sctp_get_ect(stcb, chk)) << 4);
+				tosBottom = (((in6p_flowinfo(inp) & 0x0c) | sctp_get_ect(stcb, chk)) << 4);
 			} else {
 				/* No ECN */
-				tosBottom = ((((struct in6pcb *)inp)->in6p_flowinfo & 0x0c) << 4);
+				tosBottom = ((in6p_flowinfo(inp) & 0x0c) << 4);
 			}
 		} else {
 			/* we could get no asoc if it is a O-O-T-B packet */
-			tosBottom = ((((struct in6pcb *)inp)->in6p_flowinfo & 0x0c) << 4);
+			tosBottom = ((in6p_flowinfo(inp) & 0x0c) << 4);
 		}
 		ip6h->ip6_flow = htonl(((tosTop << 24) | ((tosBottom|flowTop) << 16) | flowBottom));
 		ip6h->ip6_nxt = IPPROTO_SCTP;
@@ -2416,7 +2416,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 		 * We set the hop limit now since there is a good chance that
 		 * our ro pointer is now filled
 		 */
-		ip6h->ip6_hlim = in6_selecthlim((struct in6pcb *)&inp->ip_inp.inp,
+		ip6h->ip6_hlim = in6_selecthlim(&inp->ip_inp.inp,
 						(ro ?
 						 (rt ? (rt->rt_ifp) : (NULL)) :
 						 (NULL)));
@@ -2447,7 +2447,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 				 ro,
 				 o_flgs,
 				 ((struct in6pcb *)inp)->in6p_moptions,
-				 (struct in6pcb *)inp,
+				 (struct inpcb *)inp,
 				 &ifp);
 		if (net) {
 			/* for link local this must be done */

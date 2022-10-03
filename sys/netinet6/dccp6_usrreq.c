@@ -162,7 +162,7 @@ dccp6_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 		return EINVAL;
 	}
 	INP_LOCK(inp);
-	if (inp->inp_faddr6.s_addr != INADDR_ANY) {
+	if (in6p_faddr(inp).s_addr != INADDR_ANY) {
 		INP_UNLOCK(inp);
 		INP_INFO_WUNLOCK(&dccpbinfo);
 		return EISCONN;
@@ -174,7 +174,7 @@ dccp6_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 	if (inp == 0) {
 		return EINVAL;
 	}
-	if (!IN6_IS_ADDR_UNSPECIFIED(&inp->inp_faddr6)) {
+	if (!IN6_IS_ADDR_UNSPECIFIED(&in6p_faddr(inp))) {
 		return EISCONN;
 	}
 

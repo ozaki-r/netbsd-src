@@ -288,7 +288,7 @@ struct sctp_inpcb {
 	 */
 	union {
 		struct inpcb inp;
-		char align[(sizeof(struct inpcb) + SCTP_ALIGNM1) &
+		char align[(sizeof(struct in6pcb) + SCTP_ALIGNM1) &
 			  ~SCTP_ALIGNM1];
 	} ip_inp;
 	LIST_ENTRY(sctp_inpcb) sctp_list;	/* lists all endpoints */
@@ -753,32 +753,14 @@ void in6_sin6_2_sin (struct sockaddr_in *,
                             struct sockaddr_in6 *sin6);
 
 #ifdef __NetBSD__
-#ifndef in6pcb
-#define in6pcb		inpcb
-#endif
 #ifndef sotoin6pcb
-#define sotoin6pcb      sotoinpcb
+#define sotoin6pcb(so)	((struct in6pcb *)((so)->so_pcb))
 #endif
 #ifndef in6p_flags
-#define in6p_flags	inp_flags
+#define in6p_flags	in6p_pcb.inp_flags
 #endif
 #ifndef in6p_af
-#define in6p_af		inp_af
-#endif
-#ifndef in6p_cksum
-#define in6p_cksum	inp_cksum6
-#endif
-#ifndef in6p_hops
-#define in6p_hops	inp_hops6
-#endif
-#ifndef in6p_flowinfo
-#define in6p_flowinfo	inp_flowinfo
-#endif
-#ifndef in6p_outputopts
-#define in6p_outputopts	inp_outputopts6
-#endif
-#ifndef in6p_moptions
-#define in6p_moptions	inp_moptions6
+#define in6p_af		in6p_pcb.inp_af
 #endif
 #ifndef inpcb_hdr
 #define inpcb_hdr	inpcb
