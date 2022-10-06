@@ -46,10 +46,10 @@ extern int ip6_ah_net_deflev;
 extern int ip6_ipsec_ecn;
 extern struct secpolicy ip6_def_policy;
 
-struct in6pcb;
+struct inpcb;
 struct tcp6cb;
 
-struct secpolicy *ipsec6_check_policy(struct mbuf *, struct in6pcb *,
+struct secpolicy *ipsec6_check_policy(struct mbuf *, struct inpcb *,
     int, int *, int *);
 size_t ipsec6_hdrsiz_tcp(struct tcpcb *);
 

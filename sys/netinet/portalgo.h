@@ -33,14 +33,14 @@
 #ifdef _KERNEL
 #include <sys/sysctl.h>
 
-struct inpcb_hdr;
-int portalgo_randport(uint16_t *, struct inpcb_hdr *, kauth_cred_t);
+struct inpcb;
+int portalgo_randport(uint16_t *, struct inpcb *, kauth_cred_t);
 int sysctl_portalgo_selected4(SYSCTLFN_ARGS);
 int sysctl_portalgo_selected6(SYSCTLFN_ARGS);
 int sysctl_portalgo_reserve4(SYSCTLFN_ARGS);
 int sysctl_portalgo_reserve6(SYSCTLFN_ARGS);
 int sysctl_portalgo_available(SYSCTLFN_ARGS);
-int portalgo_algo_index_select(struct inpcb_hdr *, int);
+int portalgo_algo_index_select(struct inpcb *, int);
 
 #define	PORTALGO_MAXLEN       16
 #endif /* _KERNEL */

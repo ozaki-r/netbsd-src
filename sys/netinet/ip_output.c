@@ -1256,8 +1256,7 @@ ip_ctloutput(int op, struct socket *so, struct sockopt *sopt)
 			if (error)
 				break;
 
-			error = portalgo_algo_index_select(
-			    (struct inpcb_hdr *)inp, optval);
+			error = portalgo_algo_index_select(inp, optval);
 			break;
 
 #if defined(IPSEC)

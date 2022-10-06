@@ -488,7 +488,6 @@ udp4_realinput(struct sockaddr_in *src, struct sockaddr_in *dst,
 	u_int16_t *sport, *dport;
 	int rcvcnt;
 	struct in_addr *src4, *dst4;
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	struct mbuf *m = *mp;
 
@@ -528,8 +527,7 @@ udp4_realinput(struct sockaddr_in *src, struct sockaddr_in *dst,
 		/*
 		 * Locate pcb(s) for datagram.
 		 */
-		TAILQ_FOREACH(inph, &udbtable.inpt_queue, inph_queue) {
-			inp = (struct inpcb *)inph;
+		TAILQ_FOREACH(inp, &udbtable.inpt_queue, inp_queue) {
 			if (inp->inp_af != AF_INET)
 				continue;
 

@@ -165,7 +165,6 @@ void
 rip_input(struct mbuf *m, int off, int proto)
 {
 	struct ip *ip = mtod(m, struct ip *);
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	struct inpcb *last = NULL;
 	struct mbuf *n;
@@ -183,8 +182,7 @@ rip_input(struct mbuf *m, int off, int proto)
 	ip->ip_len = ntohs(ip->ip_len) - hlen;
 	NTOHS(ip->ip_off);
 
-	TAILQ_FOREACH(inph, &rawcbtable.inpt_queue, inph_queue) {
-		inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &rawcbtable.inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
 		if (inp->inp_ip.ip_p && inp->inp_ip.ip_p != proto)
@@ -241,12 +239,11 @@ rip_pcbnotify(struct inpcbtable *table,
     struct in_addr faddr, struct in_addr laddr, int proto, int errno,
     void (*notify)(struct inpcb *, int))
 {
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 	int nmatch;
 
 	nmatch = 0;
-	TAILQ_FOREACH(inph, &table->inpt_queue, inph_queue) {
-		struct inpcb *inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &table->inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
 		if (inp->inp_ip.ip_p && inp->inp_ip.ip_p != proto)
