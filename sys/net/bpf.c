@@ -802,11 +802,10 @@ bpf_wakeup(struct bpf_d *d)
 
 	mutex_enter(d->bd_buf_mtx);
 	cv_broadcast(&d->bd_cv);
-	mutex_exit(d->bd_buf_mtx);
-
 	if (d->bd_async)
 		softint_schedule(d->bd_sih);
 	selnotify(&d->bd_sel, 0, 0);
+	mutex_exit(d->bd_buf_mtx);
 }
 
 static void
@@ -1573,6 +1572,7 @@ bpf_poll(struct file *fp, int events)
 		 * An imitation of the FIONREAD ioctl code.
 		 */
 		mutex_enter(d->bd_mtx);
+		mutex_enter(d->bd_buf_mtx); /* For selrecord */
 		if (d->bd_hlen != 0 ||
 		    ((d->bd_immediate || d->bd_state == BPF_TIMED_OUT) &&
 		     d->bd_slen != 0)) {
@@ -1586,6 +1586,7 @@ bpf_poll(struct file *fp, int events)
 				d->bd_state = BPF_WAITING;
 			}
 		}
+		mutex_exit(d->bd_buf_mtx);
 		mutex_exit(d->bd_mtx);
 	}
 
